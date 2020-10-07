@@ -1,5 +1,5 @@
 import numpy as np
-from utils.network_reconstruction_tensor import Network_Reconstructor, Generate_corrupt_graph, compute_ROC_AUC
+from utils.ndl import Network_Reconstructor, Generate_corrupt_graph, compute_ROC_AUC
 from utils.NNetwork import NNetwork, Wtd_NNetwork
 import networkx as nx
 import csv
