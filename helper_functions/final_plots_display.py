@@ -8,6 +8,8 @@ import networkx as nx
 import csv
 import matplotlib.gridspec as gridspec
 import matplotlib.font_manager as font_manager
+import random
+
 
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman'] + plt.rcParams['font.serif']
@@ -711,6 +713,117 @@ def all_dictionaries_display_Yacoub(list_network_files, motif_sizes=[6, 11, 21, 
 
     fig.subplots_adjust(left=0.05, bottom=0.2, right=0.95, top=0.9, wspace=0.1, hspace=0)
     fig.savefig(save_folder + '/all_dictionaries_' + str(name) + '.pdf', bbox_inches='tight')
+
+def recons_display():
+  # Load Data
+  save_folder = "Network_dictionary/test"
+  nodes = 5000
+
+  list_of_nc = [i**2 for i in range(3,11)]
+
+  p_values_ER = [50/(nodes-1), 100/(nodes-1)]
+  ER = [ f"true_edgelist_for_ER_{nodes}_mean_degree_{round(p*(nodes-1))}" for p in p_values_ER]
+  p_values_SW = [0.05, 0.1]
+  k_values_SW = [50]
+  SW = [ f"true_edgelist_for_SW_{nodes}_k_{k}_p_{str(round(p,2)).replace('.','')}" for k in k_values_SW for p in p_values_SW]
+  m_values_BA = [25,50]
+  BA = [ f"true_edgelist_for_BA_{nodes}_m_{m}"for m in m_values_BA]
+  synth_network_file_names =   ER+SW+BA
+  synth_network_titles = ["ER 1","ER 2","WS 1","WS 2","BA 1","BA 2"]
+  facebook_networks_file_names = [ "MIT8",  "Harvard1", "UCLA26", "Caltech36"]
+  scores_path_new = f"{save_folder}/"
+
+  f_f_scores = np.zeros((len(list_of_nc),len(facebook_networks_file_names),len(facebook_networks_file_names)))
+  for ind_nc, num_components in enumerate(list_of_nc):
+    for ind_rec, network_to_recons in enumerate(facebook_networks_file_names):
+      for ind_dic, network_dict_used in enumerate(facebook_networks_file_names):  
+      # for ind_dic, network_dict_used in enumerate(synth_networks):
+        path = f"{scores_path_new}{network_to_recons}_recons_score_for_nc_{num_components}_from_{network_dict_used}.txt"
+        with open(path) as file: 
+          f_f_scores[ind_nc][ind_rec][ind_dic] = float(file.read())
+
+  f_s_scores = np.zeros((len(list_of_nc),len(facebook_networks_file_names),len(synth_network_file_names)))
+  for ind_nc, num_components in enumerate(list_of_nc):
+    for ind_rec, network_to_recons in enumerate(facebook_networks_file_names):
+      for ind_dic, network_dict_used in enumerate(synth_network_file_names):  
+      # for ind_dic, network_dict_used in enumerate(synth_networks):
+        path = f"{scores_path_new}{network_to_recons}_recons_score_for_nc_{num_components}_from_{network_dict_used}.txt"
+        with open(path) as file: 
+          f_s_scores[ind_nc][ind_rec][ind_dic] = float(file.read())
+
+  threshold_scores_path = f"{save_folder}/"
+
+  real_networks_file_names = ['COVID_PPI', 'node2vec_homosapiens_PPI','facebook_combined', "arxiv",  "Caltech36"]
+  real_network_titles = [ "Coronavirus", "H. sapiens", "Facebook", "arXiv", "Caltech"]
+  self_recons_score_threshold = np.zeros((len(real_networks_file_names),101))
+  for ind_network, network in enumerate(real_networks_file_names):
+    self_recons_score_threshold[ind_network] = np.loadtxt(f"{threshold_scores_path}self_recons_{network}_vary_threshold.txt")
+
+
+  
+  
+
+
+
+  #  Plotting Code
+  facebook_network_titles = [ "MIT", "Harvard", "UCLA", "Caltech"]
+  figsizeinches = 3
+  line_style = ['--','-.',':']
+  marker_style = ["^","o","*"]
+  colors = ["#000000","#009292","#ffb6db",
+   "#490092","#006ddb","#b66dff",
+   "#920000","#db6d00","#24ff24",'#a9a9a9', "#FD5956", "#03719C", "#343837", "#B04E0F"]
+  random.shuffle(colors)
+
+  fig = plt.figure(figsize=(10.5, 6)) 
+  gs = gridspec.GridSpec(3,3,width_ratios=[5,5,4]) 
+
+
+  ax0 = plt.subplot(gs[:,0])
+  for j in range(len(real_network_titles)):
+    if j == 4:
+      ax0.plot(np.linspace(0.0,1.0,num=101),self_recons_score_threshold[j],label=real_network_titles[j],alpha=0.8,color=colors[9])
+    else: 
+      ax0.plot(np.linspace(0.0,1.0,num=101),self_recons_score_threshold[j],label=real_network_titles[j],alpha=0.8,color=colors[10+j])#,marker=marker_style[j//2],markevery=3)
+  ax0.text(0.0,0.95,r"$X\leftarrow X$",fontsize=12)
+  ax0.set_ylim(0.0,1.0)
+  ax0.set_xlabel(r"$\theta \; ($with $r=25)$")
+  ax0.set_ylabel("accuracy")
+  ax0.legend(loc='lower center',fontsize='medium')
+
+
+  ax1 = plt.subplot(gs[:,1])
+  i = 3 #Caltech
+  for j in range(len(synth_network_titles)):  
+    ax1.plot(list_of_nc,f_s_scores[:,i,j],label=synth_network_titles[j],alpha=0.8,color=colors[j],linestyle=line_style[j//2])#,marker=marker_style[j//2],markevery=3)
+  for j in range(len(facebook_network_titles)): 
+    ax1.plot(list_of_nc,f_f_scores[:,i,j],label=facebook_network_titles[j],color=colors[6+j],alpha=0.8)
+  ax1.text(9,0.9625,facebook_network_titles[i]+r"$\leftarrow X$",fontsize=12)
+  ax1.set_ylim(0.3,1)
+  ax1.set_xticks(list_of_nc)
+  ax1.set_xlabel(r"$r\; ($with $\theta=0.5)$")
+  ax1.legend(loc='lower right',fontsize='medium')
+
+
+
+  axs = {}
+  for i in range(len(facebook_network_titles)-1): #All but Caltech
+    axs[i] = plt.subplot(gs[i,2])
+    for j in range(len(synth_network_titles)):  
+      axs[i].plot(list_of_nc,f_s_scores[:,i,j],label=synth_network_titles[j],alpha=0.8,color=colors[j],linestyle=line_style[j//2])#,marker=marker_style[j//2],markevery=3)
+    for j in range(len(facebook_network_titles)): 
+      axs[i].plot(list_of_nc,f_f_scores[:,i,j],label=facebook_network_titles[j],color=colors[6+j],alpha=0.8)
+    axs[i].text(36,0.65,facebook_network_titles[i]+r"$\leftarrow X$",fontsize=12)
+    axs[i].set_ylim(0.6,1)
+    axs[i].set_xticks(list_of_nc)
+    if i ==2 :
+      axs[i].set_xlabel(r"$r\; ($with $\theta=0.5)$")
+
+
+  plt.tight_layout()
+  plt.savefig("full_recons_plot_scratch.pdf",bbox_inches='tight')
+  plt.clf()
+
 
 
 

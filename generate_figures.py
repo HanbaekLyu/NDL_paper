@@ -1,5 +1,5 @@
-from helper_functions.main_script_NDL import Generate_all_dictionary, Generate_corrupt_and_denoising_results
-from helper_functions.final_plots_display import diplay_ROC_plots, all_dictionaries_display, top_dictionaries_display, all_dictionaries_display_rank
+from helper_functions.main_script_NDL import Generate_all_dictionary, Generate_corrupt_and_denoising_results, compute_all_recons_scores
+from helper_functions.final_plots_display import diplay_ROC_plots, all_dictionaries_display, top_dictionaries_display, all_dictionaries_display_rank, recons_display
 
 # This script generates all figures in
 # Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter
@@ -19,6 +19,13 @@ Generate_all_dictionary()
 
 top_dictionaries_display(motif_sizes=[6, 11, 21, 51, 101], latent_motif_rank=2)
 top_dictionaries_display(motif_sizes=[6, 11, 21, 51, 101], latent_motif_rank=1)
+
+# Run main script to perform reconstruction and compute accuracy scores
+compute_all_recons_scores()
+
+# Generate Figure 3
+
+recons_display()
 
 
 # Generate Figures 8, 11

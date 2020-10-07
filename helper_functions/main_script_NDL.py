@@ -5,7 +5,8 @@ import networkx as nx
 import csv
 import tracemalloc
 import itertools
-
+from multiprocessing import Pool
+import copy 
 
 def read_BIOGRID_network(path, save_file_name):
     with open(path) as f:
@@ -500,3 +501,199 @@ def Generate_corrupt_and_denoising_results():
         CD_if_compute_ROC_AUC=True,
         CD_if_keep_visit_statistics=False
     )
+
+
+
+def recons_network(arglist):
+  G1, name1, dictionary_name, nc, k2, full_output  = arglist
+
+  k1 = 0
+
+  reconstructor = Network_Reconstructor(G=G1,  #  simple graph
+                                  n_components=nc,  # num of dictionaries
+                                  MCMC_iterations=200,  # MCMC steps (macro, grow with size of ntwk)
+                                  loc_avg_depth=1,  # keep it at 1
+                                  sample_size=1000,  # number of patches in a single batch
+                                  batch_size=20,  # number of columns used to train dictionary
+                                  # within a single batch step (keep it)
+                                  sub_iterations=100,  # number of iterations of the
+                                  # sub-batch learning (keep it)
+                                  k1=k1, k2=k2,  # left and right arm lengths
+                                  alpha=1,  # parameter for sparse coding, higher for stronger smoothing
+                                  if_wtd_network=False,
+                                  if_tensor_ntwk=False,
+                                  is_glauber_recons=False,  # keep false to use Pivot chain for recons.
+                                  ONMF_subsample=True,  # whether use i.i.d. subsampling for each batch
+                                  omit_folded_edges=True)
+
+  number_of_nodes = k2 + 1
+  save_folder = "Network_dictionary/test"
+  reconstructor.result_dict = np.load(f'{save_folder}/full_result_{dictionary_name}_k_{number_of_nodes}_r_{nc}.npy',
+                                      allow_pickle=True).item()
+  reconstructor.W = reconstructor.result_dict.get('Dictionary learned')
+  reconstructor.code = reconstructor.result_dict.get('Code learned')
+
+
+  recons_iter = int(len(G1.vertices) * np.log(len(G1.vertices)))
+  reconstructor.result_dict.update({'reconstruction iterations': iter})
+
+  if full_output:
+    G_recons_wtd = reconstructor.reconstruct_network(recons_iter=recons_iter,
+                                             if_construct_WtdNtwk=True,
+                                             if_save_history=True,
+                                             use_checkpoint_refreshing=False,
+                                             ckpt_epoch=10000,
+                                             omit_chain_edges=False)
+    G_recons_wtd.save_wtd_edgelist(save_folder, f"{name1}_recons_for_nc_{nc}_from_{dictionary_name}.txt")
+  else:
+    G_recons_simple = reconstructor.reconstruct_network(recons_iter=recons_iter,
+                                             if_construct_WtdNtwk=True,
+                                             if_save_history=True,
+                                             use_checkpoint_refreshing=False,
+                                             ckpt_epoch=10000,
+                                             omit_chain_edges=False)
+
+    G_recons_simple = G_recons_simple.threshold2simple(0.5)
+    recons_accuracy = reconstructor.compute_jaccard_recons_accuracy(G_recons_simple)
+    file = open(f"{save_folder}/{name1}_recons_score_for_nc_{nc}_from_{dictionary_name}.txt", "w+") 
+    file.write(str(recons_accuracy)) 
+    file.close() 
+
+
+def accuracyScoreByTheta(G_original,G_recons,name):
+    accuracies = []
+    common_edges, uncommon_edges = G_recons.inter_and_outer_section(G_original)
+    common_edges_binned, uncommon_edges_binned = [0]*101 , [0]*101
+
+    for edge in common_edges:
+      index = round(100*edge)
+      if index<0:
+        common_edges_binned[0] +=1 
+      elif index>=101:
+        common_edges_binned[100] +=1 
+      else:
+        common_edges_binned[index] +=1 
+
+    for edge in uncommon_edges:
+      index = round(100*edge)
+      if index<0:
+        uncommon_edges_binned[0] +=1 
+      elif index>=101:
+        uncommon_edges_binned[100] +=1 
+      else:
+        uncommon_edges_binned[index] +=1 
+
+    common_edges_binned_cum_sum = list(itertools.accumulate(reversed(common_edges_binned)))
+    uncommon_edges_binned_cum_sum = list(itertools.accumulate(reversed(uncommon_edges_binned)))
+    G_original_num_edges = len(G_original.get_edges())
+
+
+    for i in range(101):
+      recons_accuracy = common_edges_binned_cum_sum[i] / ( G_original_num_edges + uncommon_edges_binned_cum_sum[i])
+      accuracies.append(recons_accuracy)
+
+    save_folder = "Network_dictionary/test"
+    file = open(f"{save_folder}/self_recons_{name}_vary_threshold.txt", "w+") 
+    for recons_accuracy in reversed(accuracies):
+      file.write(str(recons_accuracy)+'\n') 
+    file.close() 
+
+
+def recons_facebook_accuracy_parallel(network_to_recons_name,network_names_dict,pool_size, nc=None):
+  directory_network_files = "Data/Networks_all_NDL/"
+  if nc==None:
+    nc_range = [i**2 for i in range(3,11)] 
+  else:
+    nc_range = [nc] 
+  k2_range = [20] 
+  inputs = []
+  edgelist = np.genfromtxt(f"{directory_network_files}{network_to_recons_name}.txt", delimiter=',', dtype=str)
+  edgelist = edgelist.tolist()
+  G = NNetwork()
+  G.add_edges(edges=edgelist)
+  for dictionary_name in network_names_dict:
+    inputs += [(copy.copy(G),network_to_recons_name,dictionary_name,nc,k2, False) for nc in nc_range for k2 in k2_range]
+
+  with Pool(pool_size) as p:
+    p.map(recons_network,inputs)
+
+    
+
+
+
+
+def compute_all_recons_scores():
+  directory_network_files = "Data/Networks_all_NDL/"
+  save_folder = "Network_dictionary/test"
+
+  #Panel A: Self-Recons of Caltech, arXiv, Coranvirus PPI, Facebook, and Homo Sapiens PPI
+  k2_range = [20]
+  nc_range = [25]
+  inputs = []
+  network_names_recons = ['Caltech36']
+  for network in network_names_recons:
+    edgelist = np.genfromtxt(f"{directory_network_files}{network}.txt", delimiter=',', dtype=str)
+    edgelist = edgelist.tolist()
+
+    G = NNetwork()
+    G.add_edges(edges=edgelist)
+
+    inputs += [(copy.copy(G),network,network,nc,k2, True) for nc in nc_range for k2 in k2_range]
+
+  network_names_recons = ["arxiv","COVID_PPI", "facebook_combined","node2vec_homosapiens_PPI"]
+  for network in network_names_recons:
+    edgelist = np.genfromtxt(f"{directory_network_files}{network}.txt", delimiter=',', dtype=str)
+    edgelist = edgelist.tolist()
+
+    G = NNetwork()
+    G.add_edges(edges=edgelist)
+
+    inputs += [(copy.copy(G),network,network,nc,k2,True) for nc in nc_range for k2 in k2_range]
+  with Pool(5) as p:
+    p.map(recons_network,inputs)
+
+
+  #Panel A: Threshold Values from WTD Network
+
+  network_names_recons = ['Caltech36']
+  for network in network_names_recons:
+    edgelist = np.genfromtxt(f"{directory_network_files}/{network}.txt", delimiter=',', dtype=str)
+    edgelist = edgelist.tolist()
+    G_original = NNetwork()
+    G_original.add_edges(edges=edgelist)
+    recons_directory = save_folder
+    network_file = f"{network}_recons_for_nc_25_from_{network}.txt.txt"
+    G_recons = Wtd_NNetwork()
+    G_recons.load_add_wtd_edges(recons_directory+network_file)
+    accuracyScoreByTheta(G_original,G_recons,network)
+  network_names_recons = ["arxiv","COVID_PPI", "facebook_combined","node2vec_homosapiens_PPI"]
+  for network in network_names_recons:
+    edgelist = np.genfromtxt(f"{directory_network_files}/{network}.txt", delimiter=',', dtype=str)
+    edgelist = edgelist.tolist()
+    G_original = NNetwork()
+    G_original.add_edges(edges=edgelist)
+    recons_directory = save_folder
+    network_file = f"{network}_recons_for_nc_25_from_{network}.txt.txt"
+    G_recons = Wtd_NNetwork()
+    G_recons.load_add_wtd_edges(recons_directory+network_file)
+    accuracyScoreByTheta(G_original,G_recons,network)
+
+
+  # Panels B-E Cross-Recons Scores  
+  nodes = 5000
+  p_values_ER = [50/(nodes-1), 100/(nodes-1)]
+  ER = [ f"true_edgelist_for_ER_{nodes}_mean_degree_{round(p*(nodes-1))}" for p in p_values_ER]
+  p_values_SW = [0.05, 0.1]
+  k_values_SW = [50]
+  SW = [ f"true_edgelist_for_SW_{nodes}_k_{k}_p_{str(round(p,2)).replace('.','')}" for k in k_values_SW for p in p_values_SW]
+  m_values_BA = [25,50]
+  BA = [ f"true_edgelist_for_BA_{nodes}_m_{m}"for m in m_values_BA]
+  synth_network_file_names =   ER+SW+BA
+  
+  pool_size = [32, 32, 4, 8] #corresponds to network order below C M U H
+  facebook_networks_file_names = ["Caltech36", "MIT8", "UCLA26", "Harvard1" ]
+  network_names_dict  = synth_network_file_names +  facebook_networks_file_names
+
+  for i in range(len(pool_size)):
+    recons_facebook_accuracy_parallel(facebook_networks_file_names[i],network_names_dict,pool_size[i])
+
