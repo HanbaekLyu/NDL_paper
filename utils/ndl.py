@@ -1470,7 +1470,6 @@ def compute_ROC_AUC(G_original=None,
                     path_original=None,
                     path_corrupt=None,
                     G_corrupted=None,
-                    delimiter_original=',',
                     delimiter_corrupt=',',
                     save_file_name=None,
                     save_folder=None,
@@ -1588,7 +1587,13 @@ def compute_ROC_AUC(G_original=None,
     axs.legend(["Original PR (AUC = %f.2)" % auc_PR])
     fig.subplots_adjust(left=0.1, bottom=0.1, right=0.9, top=0.8, wspace=0.1, hspace=0.1)
     plt.suptitle(save_file_name)
-    fig.savefig(path_save)
+
+    if save_file_name is None:
+        path_save_PR = save_folder + '/PR_plot'
+    else:
+        path_save_PR = save_folder + '/PR_plot' + "_" + save_file_name
+
+    fig.savefig(path_save_PR)
 
     print("PR Accuracy without convex hull: ", auc_PR)
 
