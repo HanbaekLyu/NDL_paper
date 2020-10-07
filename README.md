@@ -5,9 +5,8 @@
 
 ## Network Dictionary Learning (repository for paper)
 
-This repository contains the scripts that generate the main figures reported in the paper:\
+This repository contains the scripts that generate the main figures reported in the paper:\\ 
 
-&nbsp;
 
 Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
 *"Learning low-rank latent mesoscale structures in networks*" (2020) [Link](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf)
