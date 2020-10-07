@@ -1,5 +1,5 @@
 <p align="center">
-<img width="600" src="https://github.com/ykureh/NMF-Networks/blob/master/NDL_logo.png?raw=true" alt="logo">
+<img width="600" src="https://github.com/HanbaekLyu/NDL_paper/blob/main/Figures/NDL_logo.png?raw=true" alt="logo">
 </p>
 
 
@@ -54,7 +54,7 @@ Then run generate_figures.py:
 
 * **Hanbaek Lyu** - *Initial work* - [Website](https://hanbaeklyu.com)
 * **Yakoub Kureh** - *Initial work* - [Website](https://www.math.ucla.edu/~ykureh/)
-* **Joshua Vendrow** - *Initial work* - [Website](https://github.com/jvendrow)
+* **Joshua Vendrow** - *Initial work* - [Website](https://www.joshvendrow.com)
 * **Mason A. Porter** - *Initial work* - [Website](https://www.math.ucla.edu/~mason/)
 
 ## License
