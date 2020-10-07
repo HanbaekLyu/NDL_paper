@@ -10,6 +10,10 @@ Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
 *"Learning low-rank latent mesoscale structures in networks*" (2020) [Link](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf)
 
 &nbsp;
+
+For a more user-friendly repository, please see [NDL package repository](https://github.com/jvendrow/Network-Dictionary-Learning) and [python package **ndlearn**](https://pypi.org/project/ndlearn/)
+
+
 &nbsp;
 
 ![](Figures/Figure1.png)
