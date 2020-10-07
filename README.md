@@ -11,8 +11,9 @@ Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
 
 &nbsp;
 
-For a more user-friendly repository, please see [NDL package repository](https://github.com/jvendrow/Network-Dictionary-Learning) and [python package **ndlearn**](https://pypi.org/project/ndlearn/)
-
+For a more user-friendly repository, please see [NDL package repository](https://github.com/jvendrow/Network-Dictionary-Learning).\
+Our code is also available as the python package [**ndlearn**](https://pypi.org/project/ndlearn/) on pypi.
+ 
 
 &nbsp;
 
