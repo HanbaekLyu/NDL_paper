@@ -674,7 +674,6 @@ class Network_Reconstructor():
                             jump_every=None,
                             omit_chain_edges=False,  ### Turn this on for denoising
                             omit_folded_edges=True,
-                            edge_threshold=0.5,
                             edges_added=None,
                             if_keep_visit_statistics=False,
                             if_save_wtd_reconstruction=True,
@@ -1054,35 +1053,6 @@ class Network_Reconstructor():
             self.result_dict.update({'visit_counts_false': visit_counts_false})
             self.result_dict.update({'visit_counts_true': visit_counts_true})
 
-        """
-        ### Finalize the simplified reconstruction graph
-        G_recons_final = self.G_recons.threshold2simple(threshold=edge_threshold)
-        G_recons_final_baseline = self.G_recons_baseline.threshold2simple(threshold=edge_threshold)
-        if ckpt_epoch is not None:
-            ### Finalizing reconstruction
-            G_recons_combined = Wtd_NNetwork()
-
-            G_recons_combined.add_wtd_edges(edges=self.G_recons.get_wtd_edgelist(),
-                                            increment_weights=True)
-            G_recons_combined.load_add_wtd_edges(path=path_recons, increment_weights=True)
-            G_recons_final = G_recons_combined
-
-            ### Finalizing baseline reconstruction
-            G_recons_combined_baseline = Wtd_NNetwork()
-
-            G_recons_combined_baseline.add_wtd_edges(edges=self.G_recons_baseline.get_wtd_edgelist(),
-                                                     increment_weights=True)
-            G_recons_combined.load_add_wtd_edges(path=path_recons_baseline, increment_weights=True)
-            G_recons_final_baseline = G_recons_combined_baseline
-
-            self.G_recons = G_recons_final
-            self.G_recons_baseline = G_recons_final_baseline
-            print('Num edges in recons', len(G_recons_final_baseline.get_edges()))
-            print('Num edges in recons_baseline', len(G_recons_final_baseline.get_edges()))
-
-        self.result_dict.update({'Edges reconstructed': G_recons_final.get_edges()})
-        self.result_dict.update({'Edges reconstructed in baseline': G_recons_final_baseline.get_edges()})
-        """
 
         print('Reconstructed in %.2f seconds' % (time() - t0))
         # print('result_dict', self.result_dict)
@@ -1244,6 +1214,14 @@ class Network_Reconstructor():
         ### Having "nodelist=G.nodes" is CRUCIAL!!!
         ### Need to use the same node ordering between A and G for A_recons and G_recons.
         return A_recons
+
+    def compute_jaccard_recons_accuracy(self, G_recons):
+        ### Compute Jaccard reconstruction accuracy
+        G = self.G
+        G_recons.add_nodes(G.vertices)
+        common_edges = G.intersection(G_recons)
+        recons_accuracy = len(common_edges) / ( len(G.get_edges()) + len(G_recons.get_edges()) - len(common_edges))
+        return recons_accuracy
 
 
 #### helper functions
