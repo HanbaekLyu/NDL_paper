@@ -7,15 +7,19 @@
 
 This repository contains the scripts that generate the main figures reported in the paper:\
 *Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter*\
-*"Learning low-rank latent mesoscale structures in networks (2020)*" [Link](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf)
+*"Learning low-rank latent mesoscale structures in networks*" (2020) [Link](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf)
 
-<br/><br/>
-
+&nbsp;
+&nbsp;
 
 ![](Figures/Figure1.png)
+&nbsp;
 ![](Figures/Figure2.png)
+&nbsp;
 ![](Figures/Figure3.png)
+&nbsp;
 ![](Figures/Figure4.png)
+&nbsp;
 
 
 
