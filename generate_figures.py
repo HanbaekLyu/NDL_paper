@@ -1,8 +1,15 @@
 from helper_functions.main_script_NDL import Generate_all_dictionary, Generate_corrupt_and_denoising_results
 from helper_functions.final_plots_display import diplay_ROC_plots, all_dictionaries_display, top_dictionaries_display, all_dictionaries_display_rank
 
+# This script generates all figures in
+# Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter
+# Learning low-rank latent mesoscale structures in networks (2020)
+
 # output files will be saved in Network_dictionary/test
 
+# First add network files for UCLA, Caltech, MIT, Harvard to Data/Networks_all_NDL
+# Ref: Amanda L. Traud, Eric D. Kelsic, Peter J. Mucha, and Mason A. Porter.
+# Comparing community structure tocharacteristics in online collegiate social networks.SIAM Review, 53:526–543, 2011.
 
 # Run main script to generate dictionary files and individual plots
 
