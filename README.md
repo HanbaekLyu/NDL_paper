@@ -3,32 +3,61 @@
 </p>
 
 
-# NMF-Networks
+## Network Dictionary Learning (repository for paper)
 
-This is the script used to learn a dictionary and code given a network.
-------------------------------------------------
-
-1) network_reconstruction_nx.py
-
-To run:
-./network_cross_reconstruction_nx.py college_index_of_school_to_learn number_of_entries_in_dict
-
-For example, suppose you want to learn a 9 entry dictionary and code from Caltech36's network, then run:
-
-./network_cross_reconstruction_nx.py 36 9
+<br/> This repository contains the scripts that generate the main figures reported in the paper: <br/>
 
 
+Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
+[*"Learning low-rank latent mesoscale structures in networks*"](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf) (2020)
+
+&nbsp;
+
+For a more user-friendly repository, please see [NDL package repository](https://github.com/jvendrow/Network-Dictionary-Learning).\
+Our code is also available as the python package [**ndlearn**](https://pypi.org/project/ndlearn/) on pypi.
+ 
+
+&nbsp;
+
+![](Figures/Figure1.png)
+&nbsp;
+![](Figures/Figure2.png)
+&nbsp;
+![](Figures/Figure3.png)
+&nbsp;
+![](Figures/Figure4.png)
+&nbsp;
 
 
-This is the script used to reconstruct a network given a dictionary.
-------------------------------------------------
 
-2) network_cross_reconstruction_nx.py
+## Usage
 
-To run:
-./network_cross_reconstruction_nx.py college_index_of_school_to_reconstruct college_index_of_dictionary_to_use number_of_entries_in_dict
+First add network files for UCLA, Caltech, MIT, Harvard to Data/Networks_all_NDL\
+Ref: Amanda L. Traud, Eric D. Kelsic, Peter J. Mucha, and Mason A. Porter,\
+*Comparing community structure tocharacteristics in online collegiate social networks.* SIAM Review, 53:526–543, 2011.
+&nbsp;
 
-For example, suppose you've learned Harvard1's dictionary with 9 entries, and now you want to reconstruct Caltech36's network from it, then run:
+Then run generate_figures.py:
+```python
+>>> generate_figures.py
+```
+## File description 
 
-./network_cross_reconstruction_nx.py 36 1 9
+  1. **utils.ndl.py** : main Network Dictionary Learning (NDL) and Network Reconstruction and Denoising (NDR) functions. 
+  2. **utils.NNetwork.py** : Weighted network class (see https://github.com/HanbaekLyu/NNetwork). 
+  3. **onmf.py**: Online Nonnegative Matrix Factorization algorithms (see https://github.com/HanbaekLyu/ONMF_ONTF_NDL)
+  4. **helper_functions.final_plots_display.py**: helper functions for making plots 
+  5. **helper_functions.main_script_NDL.py**: Main script for NDL experiments (hyper parameters can be tuned here)
+  6. **generate_figures.py**: Run to generate figures (see description in the file) 
+  
+## Authors
+
+* **Hanbaek Lyu** - *Initial work* - [Website](https://hanbaeklyu.com)
+* **Yakoub Kureh** - *Initial work* - [Website](https://www.math.ucla.edu/~ykureh/)
+* **Joshua Vendrow** - *Initial work* - [Website](https://github.com/jvendrow)
+* **Mason A. Porter** - *Initial work* - [Website](https://www.math.ucla.edu/~mason/)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
 
