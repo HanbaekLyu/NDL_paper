@@ -6,7 +6,7 @@
 ## Network Dictionary Learning (repository for paper)
 
 This repository contains the scripts that generate the main figures reported in the paper:\
-*Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter*\
+Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter\
 *"Learning low-rank latent mesoscale structures in networks*" (2020) [Link](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf)
 
 &nbsp;
@@ -27,7 +27,8 @@ This repository contains the scripts that generate the main figures reported in 
 
 First add network files for UCLA, Caltech, MIT, Harvard to Data/Networks_all_NDL\
 Ref: Amanda L. Traud, Eric D. Kelsic, Peter J. Mucha, and Mason A. Porter.\
-Comparing community structure tocharacteristics in online collegiate social networks.SIAM Review, 53:526–543, 2011.
+*Comparing community structure tocharacteristics in online collegiate social networks.* SIAM Review, 53:526–543, 2011.
+&nbsp;
 
 Then run generate_figures.py:
 ```python
