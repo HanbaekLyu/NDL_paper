@@ -5,7 +5,7 @@
 
 ## Network Dictionary Learning (repository for paper)
 
-This repository contains the scripts that generate the main figures reported in the paper: <br\>
+<br/> This repository contains the scripts that generate the main figures reported in the paper: <br/>
 
 
 Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
