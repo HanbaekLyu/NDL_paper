@@ -589,7 +589,7 @@ def recons_display():
   threshold_scores_path = f"{save_folder}/"
 
   real_networks_file_names = ['COVID_PPI', 'node2vec_homosapiens_PPI','facebook_combined', "arxiv",  "Caltech36"]
-  real_network_titles = [ "Coronavirus", "H. sapiens", "Facebook", "arXiv", "Caltech"]
+  real_network_titles = [ "Coronavirus", "$\it{H. sapiens}$", "Facebook", "arXiv", "Caltech"]
   self_recons_score_threshold = np.zeros((len(real_networks_file_names),101))
   for ind_network, network in enumerate(real_networks_file_names):
     self_recons_score_threshold[ind_network] = np.loadtxt(f"{threshold_scores_path}self_recons_{network}_vary_threshold.txt")
@@ -622,7 +622,7 @@ def recons_display():
       ax0.plot(np.linspace(0.0,1.0,num=101),self_recons_score_threshold[j],label=real_network_titles[j],alpha=0.8,color=colors[10+j])#,marker=marker_style[j//2],markevery=3)
   ax0.text(0.0,0.95,r"$X\leftarrow X$",fontsize=12)
   ax0.set_ylim(0.0,1.0)
-  ax0.set_xlabel(r"$\theta \; ($with $r=25)$")
+  ax0.set_xlabel(r"$\theta \;\; ($with $r=25)$")
   ax0.set_ylabel("accuracy")
   ax0.legend(loc='lower center',fontsize='medium')
 
@@ -636,7 +636,7 @@ def recons_display():
   ax1.text(9,0.9625,facebook_network_titles[i]+r"$\leftarrow X$",fontsize=12)
   ax1.set_ylim(0.3,1)
   ax1.set_xticks(list_of_nc)
-  ax1.set_xlabel(r"$r\; ($with $\theta=0.5)$")
+  ax1.set_xlabel(r"$r\;\; ($with $\theta=0.5)$")
   ax1.legend(loc='lower right',fontsize='medium')
 
 
@@ -652,7 +652,7 @@ def recons_display():
     axs[i].set_ylim(0.6,1)
     axs[i].set_xticks(list_of_nc)
     if i ==2 :
-      axs[i].set_xlabel(r"$r\; ($with $\theta=0.5)$")
+      axs[i].set_xlabel(r"$r\;\; ($with $\theta=0.5)$")
 
 
   plt.tight_layout()
