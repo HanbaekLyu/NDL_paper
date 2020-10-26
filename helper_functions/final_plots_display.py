@@ -589,7 +589,7 @@ def recons_display():
   threshold_scores_path = f"{save_folder}/"
 
   real_networks_file_names = ['COVID_PPI', 'node2vec_homosapiens_PPI','facebook_combined', "arxiv",  "Caltech36"]
-  real_network_titles = [ "Coronavirus", "$\it{H. sapiens}$", "Facebook", "arXiv", "Caltech"]
+  real_network_titles = [ "$\\textsc{\\texttt{Coronavirus}}$", "$\\textsc{\\texttt{H. sapiens}}$", "$\\textsc{\\texttt{SNAP FB}}$", "$\\textsc{\\texttt{arXiv}}$", "$\\textsc{\\texttt{Caltech}}$"]
   self_recons_score_threshold = np.zeros((len(real_networks_file_names),101))
   for ind_network, network in enumerate(real_networks_file_names):
     self_recons_score_threshold[ind_network] = np.loadtxt(f"{threshold_scores_path}self_recons_{network}_vary_threshold.txt")
