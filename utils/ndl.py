@@ -1,5 +1,6 @@
-from utils.onmf import Online_NMF
-from utils.NNetwork import NNetwork, Wtd_NNetwork
+# from utils.onmf.onmf import Online_NMF
+from utils.onmf.ontf import Online_NTF
+from Network_Class.NNetwork import NNetwork, Wtd_NNetwork
 import numpy as np
 import itertools
 from time import time
@@ -8,12 +9,18 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import os
 import psutil
+from tqdm import trange
+import matplotlib.gridspec as gridspec
+from time import sleep
+import sys
 from sklearn.metrics import roc_curve
 from scipy.spatial import ConvexHull
 from sklearn.metrics import precision_recall_curve
+import random
 
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman'] + plt.rcParams['font.serif']
+import ast
 import gc
 
 DEBUG = False
@@ -443,7 +450,7 @@ class Network_Reconstructor():
         print('W.shape', W.shape)
         errors = []
         code = self.code
-        for t in np.arange(self.MCMC_iterations):
+        for t in trange(self.MCMC_iterations):
             X, emb = self.get_patches_glauber(B, emb)
             # print('X.shape', X.shape)  ## X.shape = (k**2, sample_size)
 
@@ -456,7 +463,7 @@ class Network_Reconstructor():
             if not self.if_tensor_ntwk:
                 X = np.expand_dims(X, axis=1)  ### X.shape = (k**2, 1, sample_size)
             if t == 0:
-                self.ntf = Online_NMF(X, self.n_components,
+                self.ntf = Online_NTF(X, self.n_components,
                                       iterations=self.sub_iterations,
                                       batch_size=self.batch_size,
                                       alpha=self.alpha,
@@ -466,7 +473,7 @@ class Network_Reconstructor():
                 self.W, self.At, self.Bt, self.Ct, self.H = self.ntf.train_dict()
                 self.H = code
             else:
-                self.ntf = Online_NMF(X, self.n_components,
+                self.ntf = Online_NTF(X, self.n_components,
                                       iterations=self.sub_iterations,
                                       batch_size=self.batch_size,
                                       ini_dict=self.W,
@@ -488,7 +495,7 @@ class Network_Reconstructor():
             #  progress status
             # if 100 * t / self.MCMC_iterations % 1 == 0:
             #    print(t / self.MCMC_iterations * 100)
-            print('Current iteration %i out of %i' % (t, self.MCMC_iterations))
+            # print('Current iteration %i out of %i' % (t, self.MCMC_iterations))
         self.code = code
         if update_dict_save:
             self.result_dict.update({'Dictionary learned': self.W})
@@ -674,6 +681,7 @@ class Network_Reconstructor():
                             jump_every=None,
                             omit_chain_edges=False,  ### Turn this on for denoising
                             omit_folded_edges=True,
+                            edge_threshold=0.5,
                             edges_added=None,
                             if_keep_visit_statistics=False,
                             if_save_wtd_reconstruction=True,
@@ -730,7 +738,7 @@ class Network_Reconstructor():
             W_ext_reduced = self.omit_chain_edges(W_ext)
 
         has_saved_checkpoint = False
-        for t in np.arange(recons_iter):
+        for t in trange(recons_iter):
             meso_patch = self.get_single_patch_glauber(B, emb, omit_folded_edges=omit_folded_edges)
             patch = meso_patch[0]
             emb = meso_patch[1]
@@ -832,10 +840,10 @@ class Network_Reconstructor():
                                     [edge[0], edge[1], (j * colored_edge_weight + np.abs(x[0] - x[1])) / (j + 1)])
 
             # print progress status and memory use
-            if t % 1000 == 0:
+            if t % 50000 == 0:
                 self.result_dict.update({'homomorphisms_history': emb_history})
                 self.result_dict.update({'code_history': code_history})
-                print('iteration %i out of %i' % (t, recons_iter))
+                # print('iteration %i out of %i' % (t, recons_iter))
                 # self.G_recons.get_min_max_edge_weights()
                 pid = os.getpid()
                 py = psutil.Process(pid)
@@ -1053,6 +1061,35 @@ class Network_Reconstructor():
             self.result_dict.update({'visit_counts_false': visit_counts_false})
             self.result_dict.update({'visit_counts_true': visit_counts_true})
 
+        """
+        ### Finalize the simplified reconstruction graph
+        G_recons_final = self.G_recons.threshold2simple(threshold=edge_threshold)
+        G_recons_final_baseline = self.G_recons_baseline.threshold2simple(threshold=edge_threshold)
+        if ckpt_epoch is not None:
+            ### Finalizing reconstruction
+            G_recons_combined = Wtd_NNetwork()
+
+            G_recons_combined.add_wtd_edges(edges=self.G_recons.get_wtd_edgelist(),
+                                            increment_weights=True)
+            G_recons_combined.load_add_wtd_edges(path=path_recons, increment_weights=True)
+            G_recons_final = G_recons_combined
+
+            ### Finalizing baseline reconstruction
+            G_recons_combined_baseline = Wtd_NNetwork()
+
+            G_recons_combined_baseline.add_wtd_edges(edges=self.G_recons_baseline.get_wtd_edgelist(),
+                                                     increment_weights=True)
+            G_recons_combined.load_add_wtd_edges(path=path_recons_baseline, increment_weights=True)
+            G_recons_final_baseline = G_recons_combined_baseline
+
+            self.G_recons = G_recons_final
+            self.G_recons_baseline = G_recons_final_baseline
+            print('Num edges in recons', len(G_recons_final_baseline.get_edges()))
+            print('Num edges in recons_baseline', len(G_recons_final_baseline.get_edges()))
+
+        self.result_dict.update({'Edges reconstructed': G_recons_final.get_edges()})
+        self.result_dict.update({'Edges reconstructed in baseline': G_recons_final_baseline.get_edges()})
+        """
 
         print('Reconstructed in %.2f seconds' % (time() - t0))
         # print('result_dict', self.result_dict)
@@ -1214,14 +1251,6 @@ class Network_Reconstructor():
         ### Having "nodelist=G.nodes" is CRUCIAL!!!
         ### Need to use the same node ordering between A and G for A_recons and G_recons.
         return A_recons
-
-    def compute_jaccard_recons_accuracy(self, G_recons):
-        ### Compute Jaccard reconstruction accuracy
-        G = self.G
-        G_recons.add_nodes(G.vertices)
-        common_edges = G.intersection(G_recons)
-        recons_accuracy = len(common_edges) / ( len(G.get_edges()) + len(G_recons.get_edges()) - len(common_edges))
-        return recons_accuracy
 
 
 #### helper functions
@@ -1448,6 +1477,7 @@ def compute_ROC_AUC(G_original=None,
                     path_original=None,
                     path_corrupt=None,
                     G_corrupted=None,
+                    delimiter_original=',',
                     delimiter_corrupt=',',
                     save_file_name=None,
                     save_folder=None,
@@ -1494,22 +1524,23 @@ def compute_ROC_AUC(G_original=None,
     j = 0
     if not subtractive_noise:
         for edge in edgelist_full:
-            j += 1
+            if np.random.rand(1) < 0.1:
+                j += 1
 
-            pred = G_recons.get_edge_weight(edge[0], edge[1])
+                pred = G_recons.get_edge_weight(edge[0], edge[1])
 
-            if pred == None:
-                y_pred.append(0)
-            else:
-                if not flip_TF:
-                    y_pred.append(pred)
+                if pred == None:
+                    y_pred.append(0)
                 else:
-                    y_pred.append(1 - pred)
+                    if not flip_TF:
+                        y_pred.append(pred)
+                    else:
+                        y_pred.append(1 - pred)
 
-            if edge in edgelist_original:
-                y_true.append(1)
-            else:
-                y_true.append(0)
+                if edge in edgelist_original:
+                    y_true.append(1)
+                else:
+                    y_true.append(0)
     else:
         V = G_original.nodes()
         print('!! len(G_original.edges())', G_original.edges[0])
@@ -1565,13 +1596,7 @@ def compute_ROC_AUC(G_original=None,
     axs.legend(["Original PR (AUC = %f.2)" % auc_PR])
     fig.subplots_adjust(left=0.1, bottom=0.1, right=0.9, top=0.8, wspace=0.1, hspace=0.1)
     plt.suptitle(save_file_name)
-
-    if save_file_name is None:
-        path_save_PR = save_folder + '/PR_plot'
-    else:
-        path_save_PR = save_folder + '/PR_plot' + "_" + save_file_name
-
-    fig.savefig(path_save_PR)
+    fig.savefig(path_save)
 
     print("PR Accuracy without convex hull: ", auc_PR)
 
@@ -1595,6 +1620,4 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f %s%s" % (num, 'Yi', suffix)
-
-
 
