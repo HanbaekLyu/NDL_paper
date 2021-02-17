@@ -9,7 +9,7 @@
 
 
 Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
-[*"Learning low-rank latent mesoscale structures in networks*"](https://hanbaeklyudotcom.files.wordpress.com/2020/10/ndl-1.pdf) (2020)
+[*"Learning low-rank latent mesoscale structures in networks*"](https://arxiv.org/abs/2102.06984) (arXiv 2021)
 
 &nbsp;
 
