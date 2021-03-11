@@ -21,9 +21,8 @@ class NNetwork():
         self.vertices_set = set()
         self.number_nodes = 0
 
-    """ 
+    """
     def set_edges(self, edges):
-
         self.sort_left(edges)
         self.sort_right(edges)
         self.edges = edges
@@ -167,6 +166,9 @@ class Wtd_NNetwork():
             u, v = edge
         else:
             u, v = eval(edge)
+
+        u = str(u)
+        v = str(v)
         # self.edges.append(edge)
         if not increment_weights or not self.has_edge(u, v):
             wt = weight
@@ -261,6 +263,18 @@ class Wtd_NNetwork():
             return v in self.neighb[u]
         except KeyError:
             return False
+
+    def indices(self, a, func):
+        return [i for (i, val) in enumerate(a) if func(val)]
+
+    def read_adj(self, adj):
+        """
+        adj = n x n (weighted) adjacency matrix
+        """
+        for i in np.arange(adj.shape[0]):
+            nb_list = self.indices(adj[:, i], lambda x: x == 1)
+            for j in nb_list:
+                self.add_edge(edge=[i,j], weight=float(adj[i,j]), increment_weights=False, is_dict=False)
 
     def has_colored_edge(self, u, v):
         """
@@ -458,10 +472,28 @@ class Wtd_NNetwork():
 
         return sum(B[idx, :])
 
+    def k_node_ind_subgraph(self, k, center=None):
+        # Computes a random k-node induced subgraph
+        # Initialized simple symmetric RW uniformly at "center" node,
+        # and collects neighboring node until we get k distinct nodes
+        # if center is None, then initial node is chosen uniformly at random
+        # Once a set of k distinct nodes are collected, take the induced subgraph on it
+        if k > len(self.vertices):
+            print("cannot take i% distinct nodes from a graph with %i nodes" % (k, len(self.vertices)))
 
-
-
-
-
-
-
+        V0 = []
+        while (len(V0) < k): # RW may be initialized in a small component with <k nodes
+        # -- restart if it doesn't end within k^2 steps
+            i = 0
+            V0 = []
+            x = np.random.choice(self.vertices)
+            if center is not None:
+                x = center
+            V0.append(x)
+            while (len(V0) < k) and (i<k**2):
+                x = np.random.choice(list(self.neighbors(x)))
+                V0.append(x)
+                V0 = list(set(V0))
+                i += 1
+            # now take subgraph on V0:
+        return self.subgraph(V0)

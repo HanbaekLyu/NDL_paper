@@ -6,7 +6,7 @@ import csv
 import tracemalloc
 import itertools
 from multiprocessing import Pool
-import copy 
+import copy
 
 def read_BIOGRID_network(path, save_file_name):
     with open(path) as f:
@@ -56,10 +56,11 @@ def run_NDL_NDR(  # ========================== Master parameters
         if_corrupt_and_denoise=False,
         generate_corrupted_ntwk=False,
         use_dict_from_corrupted_ntwk=False,
+        use_dict_from_ER=False,
         # -------------------------- Global parameters
         is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
         is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
-        Pivot_exact_MH_rule=False,  # If true, use exact Metropolis-Hastings rejection rule for Pivot chain
+        Pivot_exact_MH_rule = False, # If true, use exact Metropolis-Hastings rejection rule for Pivot chain
         omit_folded_edges=False,
         omit_chain_edges_denoising=True,
         show_importance=True,
@@ -67,7 +68,7 @@ def run_NDL_NDR(  # ========================== Master parameters
         if_tensor_ntwk=False,
         # ========================= Parameters for Network Dictionary Learning (NDL)
         NDL_MCMC_iterations=100,
-        NDL_minibatch_size=100,
+        NDL_minibatch_size=1000,
         NDL_onmf_sub_minibatch_size=20,
         NDL_onmf_sub_iterations=100,
         NDL_alpha=1,  # L1 sparsity regularizer for sparse coding
@@ -76,23 +77,33 @@ def run_NDL_NDR(  # ========================== Master parameters
         # ========================= Parameters for Network Reconstruction (NR)
         NR_recons_iter=50000,
         NR_if_save_history=True,
-        NR_ckpt_epoch=10000,  # not used if None
+        NR_ckpt_epoch=10000, # not used if None
         NR_if_save_wtd_reconstruction=False,
         NR_edge_threshold=0.5,
+        # ========================= Parameters for Network Reconstruction (ND)
+        ND_recons_iter=50000,
+        ND_dictionary_for_denoising = None,
+        ND_original_network = None, # in Wtd_NNetwork class
+        ND_original_network_path = None, # If no original network is given, assign a path to read it
+        ND_noise_sign = "negative", # could also be "positive"
+        ND_if_save_history=True,
+        ND_ckpt_epoch=10000, # Not used if None
+        ND_edge_threshold=0.5,
+        ND_if_compute_ROC_AUC = True,
+        ND_flip_TP = False,
         # ========================= Parameters for Corruption-Denoising experiments
         # ------------------------- ND-NDL from corrupted Network
         CD_NDL_MCMC_iterations=50,
-        CD_NDL_corrupt_ntwk_path=None,
         # ------------------------- ND denoising paramters
         CD_recons_iter=50000,
-        CD_custom_dict_path=None,
+        CD_custom_dict_path = None,
         CD_recons_jump_every=1000,
         CD_if_save_history=False,
-        CD_ckpt_epoch=10000,  # not used if None
+        CD_ckpt_epoch=10000, # not used if None
         CD_if_save_wtd_reconstruction=True,
         CD_if_keep_visit_statistics=False,
         CD_edge_threshold=0.3,
-        # ---------------------------
+        #---------------------------
         CD_if_compute_ROC_AUC=True
 ):
     for (k, ntwk, n_components) in itertools.product(list_k, list_network_files, list_n_components):
@@ -176,6 +187,72 @@ def run_NDL_NDR(  # ========================== Master parameters
 
             recons_accuracy = reconstructor.compute_recons_accuracy(G_recons, if_baseline=True)
 
+        if if_denoise:
+            if ND_dictionary_for_denoising is not None:
+                reconstructor.W = ND_dictionary_for_denoising
+            else:
+                reconstructor.train_dict(jump_every=NDL_jump_every)
+
+            G_recons = reconstructor.reconstruct_network(recons_iter=ND_recons_iter,
+                                                         if_save_history=ND_if_save_history,
+                                                         ckpt_epoch=ND_ckpt_epoch,
+                                                         omit_chain_edges=True,
+                                                         if_save_wtd_reconstruction=True,
+                                                         edge_threshold=ND_edge_threshold)
+
+            recons_wtd_edgelist = reconstructor.result_dict.get('Edges in weighted reconstruction')
+            recons_accuracy = reconstructor.compute_recons_accuracy(G_recons, if_baseline=True)
+
+            if ND_if_compute_ROC_AUC:
+                ROC_file_name = network_name + "_" + str(NR_recons_iter)
+                if ND_original_network is not None:
+                    ROC_Dict = compute_ROC_AUC(G_original=ND_original_network,
+                                               G_corrupted=G,
+                                               path_original=None,
+                                               path_corrupt=None,
+                                               recons_wtd_edgelist=recons_wtd_edgelist,
+                                               delimiter_original=',',
+                                               delimiter_corrupt=',',
+                                               save_file_name=ROC_file_name,
+                                               save_folder=save_folder,
+                                               flip_TF=ND_flip_TP,
+                                               subtractive_noise=(ND_noise_sign == 'negative'))
+                else:
+                    ROC_dict = compute_ROC_AUC(G_original=None,
+                                               G_corrupted=G,
+                                               path_original=ND_original_network_path,
+                                               path_corrupt=None,
+                                               recons_wtd_edgelist=recons_wtd_edgelist,
+                                               delimiter_original=',',
+                                               delimiter_corrupt=',',
+                                               save_file_name=ROC_file_name,
+                                               save_folder=save_folder,
+                                               flip_TF=ND_flip_TP,
+                                               subtractive_noise=(ND_noise_sign == 'negative'))
+
+                reconstructor_corrupt.result_dict.update({'False positive rate': ROC_dict.get('False positive rate')})
+                reconstructor_corrupt.result_dict.update({'True positive rate': ROC_dict.get('True positive rate')})
+                reconstructor_corrupt.result_dict.update({'AUC': ROC_dict.get('AUC')})
+
+                ROC_dict.update({'Dictionary learned': reconstructor_corrupt.W})
+                ROC_dict.update({'Motif size': reconstructor_corrupt.k2 + 1})
+                # ROC_dict.update({'Code learned': reconstructor_corrupt.code})
+
+                if not use_dict_from_ER:
+                    save_file_name = save_folder + "/ROC_dict_" + str(
+                        network_name) + "_" + "Use_corrupt_dict_" + str(
+                        use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                        len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                else:
+                    save_file_name = save_folder + "/ROC_dict_" + str(
+                        network_name) + "_" + "Use_ER_dict_" + str(
+                        use_dict_from_ER) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                        len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
+
+                np.save(save_file_name, ROC_dict)
+
         if learn_from_reconstruction:
             path = save_folder + '/full_result_' + str(network_name) + "_k_" + str(k) + "_r_" + str(
                 n_components) + '.npy'
@@ -254,7 +331,7 @@ def run_NDL_NDR(  # ========================== Master parameters
                     print('path_corrupt', path_corrupt)
                 else:
                     G_corrupt = Wtd_NNetwork()
-                    G_corrupt.load_add_wtd_edges(CD_NDL_corrupt_ntwk_path, increment_weights=False, delimiter=',',
+                    G_corrupt.load_add_wtd_edges(path_corrupt, increment_weights=False, delimiter=',',
                                                  use_genfromtxt=True)
                     # G = read_BIOGRID_network(path)
                     print('num edges in G_corrupt', len(G_corrupt.get_edges()))
@@ -292,10 +369,11 @@ def run_NDL_NDR(  # ========================== Master parameters
                     # Transfer-denoising
                     result_dict = np.load(CD_custom_dict_path, allow_pickle=True).item()
                     reconstructor_corrupt.W = result_dict.get('Dictionary learned')
-                    reconstructor_corrupt.code = result_dict.get('Code learned')
+                    reconstructor_corrupt.At = result_dict.get('Code COV learned')
                     print('Dictionary loaded from:', str(CD_custom_dict_path))
 
-                if use_dict_from_corrupted_ntwk:
+
+                elif use_dict_from_corrupted_ntwk:
                     reconstructor_corrupt.W = reconstructor_corrupt.train_dict(update_dict_save=True)
                     # print('corrupted dictionary', reconstructor.W)
                     print('Dictionary learned from the corrupted network')
@@ -350,10 +428,17 @@ def run_NDL_NDR(  # ========================== Master parameters
 
                 print('parameter', parameter)
 
-                save_file_name = save_folder + "/full_result_" + str(network_name) + "_" + str(
-                    noise_nodes) + "_n_corrupt_edges_" + str(
-                    len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
-                    iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                if not use_dict_from_ER:
+                    save_file_name = save_folder + "/full_result_" + str(
+                        network_name) + "_" + "Use_corrupt_dict_" + str(
+                        use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                        len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                else:
+                    save_file_name = save_folder + "/full_result_" + str(network_name) + "_" + "Use_ER_dict_" + str(
+                        use_dict_from_ER) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                        len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
 
                 # np.save(save_file_name, reconstructor_corrupt.result_dict)
 
@@ -367,7 +452,6 @@ def run_NDL_NDR(  # ========================== Master parameters
                         '.',
                         '') + "_n_edges_" + noise_sign + "_" + str(
                         len(edges_changed)) + "_iter_" + str(iter)
-
                     ROC_dict = compute_ROC_AUC(G_original=G,
                                                path_corrupt=path_corrupt,
                                                recons_wtd_edgelist=recons_wtd_edgelist,
@@ -384,14 +468,34 @@ def run_NDL_NDR(  # ========================== Master parameters
                     reconstructor_corrupt.result_dict.update({'True positive rate': ROC_dict.get('True positive rate')})
                     reconstructor_corrupt.result_dict.update({'AUC': ROC_dict.get('AUC')})
 
+                    ROC_dict.update({'# edges of original ntwk': len(G.get_edges())})
                     ROC_dict.update({'Dictionary learned': reconstructor_corrupt.W})
                     ROC_dict.update({'Motif size': reconstructor_corrupt.k2 + 1})
                     ROC_dict.update({'Code learned': reconstructor_corrupt.code})
+                    ROC_dict.update({'Network name': str(network_name)})
+                    ROC_dict.update({'Use_corrupt_dict': str(use_dict_from_corrupted_ntwk)})
+                    ROC_dict.update({'noise_nodes': str(noise_nodes)})
+                    ROC_dict.update({'noise_type': noise_type})
+                    ROC_dict.update({'n_corrupt_edges': edges_changed})
+                    ROC_dict.update({'denoising_iter': str(iter)})
+                    ROC_dict.update({'omit_chain_edges_denoising': str(omit_chain_edges_denoising)})
+                    ROC_dict.update({'omit_folded_edges': str(omit_folded_edges)})
 
-                    save_file_name = save_folder + "/ROC_dict_" + str(
-                        network_name) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
-                        len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
-                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
+
+                    save_folder_sub = save_folder + "/" + str(network_name) + "/" + str(noise_type) + "/" + str(rate).replace('.', '')
+
+                    if not use_dict_from_ER:
+                        save_file_name = save_folder_sub + "/ROC_dict_" + str(
+                            network_name) + "_" + "Use_corrupt_dict_" + str(
+                            use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                            len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                            iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                    else:
+                        save_file_name = save_folder_sub + "/ROC_dict_" + str(
+                            network_name) + "_" + "Use_ER_dict_" + str(
+                            use_dict_from_ER) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                            len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                            iter) + "_Glauber_recons_" + str(is_glauber_recons)
 
                     np.save(save_file_name, ROC_dict)
 
@@ -502,8 +606,6 @@ def Generate_corrupt_and_denoising_results():
         CD_if_keep_visit_statistics=False
     )
 
-
-
 def recons_network(arglist):
   G1, name1, dictionary_name, nc, k2, full_output  = arglist
 
@@ -528,8 +630,7 @@ def recons_network(arglist):
 
   number_of_nodes = k2 + 1
   save_folder = "Network_dictionary/test"
-  reconstructor.result_dict = np.load(f'{save_folder}/full_result_{dictionary_name}_k_{number_of_nodes}_r_{nc}.npy',
-                                      allow_pickle=True).item()
+  reconstructor.result_dict = np.load(f'{save_folder}/full_result_{dictionary_name}_k_{number_of_nodes}_r_{nc}.npy', allow_pickle=True).item()
   reconstructor.W = reconstructor.result_dict.get('Dictionary learned')
   reconstructor.code = reconstructor.result_dict.get('Code learned')
 
@@ -555,9 +656,9 @@ def recons_network(arglist):
 
     G_recons_simple = G_recons_simple.threshold2simple(0.5)
     recons_accuracy = reconstructor.compute_jaccard_recons_accuracy(G_recons_simple)
-    file = open(f"{save_folder}/{name1}_recons_score_for_nc_{nc}_from_{dictionary_name}.txt", "w+") 
-    file.write(str(recons_accuracy)) 
-    file.close() 
+    file = open(f"{save_folder}/{name1}_recons_score_for_nc_{nc}_from_{dictionary_name}.txt", "w+")
+    file.write(str(recons_accuracy))
+    file.close()
 
 
 def accuracyScoreByTheta(G_original,G_recons,name):
@@ -568,20 +669,20 @@ def accuracyScoreByTheta(G_original,G_recons,name):
     for edge in common_edges:
       index = round(100*edge)
       if index<0:
-        common_edges_binned[0] +=1 
+        common_edges_binned[0] +=1
       elif index>=101:
-        common_edges_binned[100] +=1 
+        common_edges_binned[100] +=1
       else:
-        common_edges_binned[index] +=1 
+        common_edges_binned[index] +=1
 
     for edge in uncommon_edges:
       index = round(100*edge)
       if index<0:
-        uncommon_edges_binned[0] +=1 
+        uncommon_edges_binned[0] +=1
       elif index>=101:
-        uncommon_edges_binned[100] +=1 
+        uncommon_edges_binned[100] +=1
       else:
-        uncommon_edges_binned[index] +=1 
+        uncommon_edges_binned[index] +=1
 
     common_edges_binned_cum_sum = list(itertools.accumulate(reversed(common_edges_binned)))
     uncommon_edges_binned_cum_sum = list(itertools.accumulate(reversed(uncommon_edges_binned)))
@@ -593,19 +694,19 @@ def accuracyScoreByTheta(G_original,G_recons,name):
       accuracies.append(recons_accuracy)
 
     save_folder = "Network_dictionary/test"
-    file = open(f"{save_folder}/self_recons_{name}_vary_threshold.txt", "w+") 
+    file = open(f"{save_folder}/self_recons_{name}_vary_threshold.txt", "w+")
     for recons_accuracy in reversed(accuracies):
-      file.write(str(recons_accuracy)+'\n') 
-    file.close() 
+      file.write(str(recons_accuracy)+'\n')
+    file.close()
 
 
 def recons_facebook_accuracy_parallel(network_to_recons_name,network_names_dict,pool_size, nc=None):
   directory_network_files = "Data/Networks_all_NDL/"
   if nc==None:
-    nc_range = [i**2 for i in range(3,11)] 
+    nc_range = [i**2 for i in range(3,11)]
   else:
-    nc_range = [nc] 
-  k2_range = [20] 
+    nc_range = [nc]
+  k2_range = [20]
   inputs = []
   edgelist = np.genfromtxt(f"{directory_network_files}{network_to_recons_name}.txt", delimiter=',', dtype=str)
   edgelist = edgelist.tolist()
@@ -617,7 +718,7 @@ def recons_facebook_accuracy_parallel(network_to_recons_name,network_names_dict,
   with Pool(pool_size) as p:
     p.map(recons_network,inputs)
 
-    
+
 
 
 
@@ -679,7 +780,7 @@ def compute_all_recons_scores():
     accuracyScoreByTheta(G_original,G_recons,network)
 
 
-  # Panels B-E Cross-Recons Scores  
+  # Panels B-E Cross-Recons Scores
   nodes = 5000
   p_values_ER = [50/(nodes-1), 100/(nodes-1)]
   ER = [ f"true_edgelist_for_ER_{nodes}_mean_degree_{round(p*(nodes-1))}" for p in p_values_ER]
@@ -689,11 +790,10 @@ def compute_all_recons_scores():
   m_values_BA = [25,50]
   BA = [ f"true_edgelist_for_BA_{nodes}_m_{m}"for m in m_values_BA]
   synth_network_file_names =   ER+SW+BA
-  
+
   pool_size = [32, 32, 4, 8] #corresponds to network order below C M U H
   facebook_networks_file_names = ["Caltech36", "MIT8", "UCLA26", "Harvard1" ]
   network_names_dict  = synth_network_file_names +  facebook_networks_file_names
 
   for i in range(len(pool_size)):
     recons_facebook_accuracy_parallel(facebook_networks_file_names[i],network_names_dict,pool_size[i])
-
