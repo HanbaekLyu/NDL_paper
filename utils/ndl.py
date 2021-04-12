@@ -1,6 +1,6 @@
 # from utils.onmf.onmf import Online_NMF
-from utils.onmf.ontf import Online_NTF
-from Network_Class.NNetwork import NNetwork, Wtd_NNetwork
+from utils.onmf import Online_NMF
+from utils.NNetwork import NNetwork, Wtd_NNetwork
 import numpy as np
 import itertools
 from time import time
@@ -1103,7 +1103,7 @@ class Network_Reconstructor():
         print('reconstructing given network...')
         '''
         Networkx version of the network completion algorithm
-        Scale the reconstructed matrix B by np.max(A) and compare with the original network. 
+        Scale the reconstructed matrix B by np.max(A) and compare with the original network.
         '''
 
         G = self.G
@@ -1620,4 +1620,3 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f %s%s" % (num, 'Yi', suffix)
-
