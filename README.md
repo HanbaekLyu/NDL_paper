@@ -1,5 +1,5 @@
 <p align="center">
-<img width="600" src="https://github.com/HanbaekLyu/NDL_paper/blob/main/Figures/NDL_logo2.png?raw=true" alt="logo">
+<img width="600" src="https://github.com/HanbaekLyu/NDL_paper/blob/main/Figures/NDL_logo1.png?raw=true" alt="logo">
 </p>
 
 
