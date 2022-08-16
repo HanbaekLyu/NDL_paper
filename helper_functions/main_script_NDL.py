@@ -1,12 +1,15 @@
 import numpy as np
-from utils.ndl import Network_Reconstructor, Generate_corrupt_graph, compute_ROC_AUC
-from utils.NNetwork import NNetwork, Wtd_NNetwork
+from utils.ndl import Network_Reconstructor, Generate_corrupt_graph, compute_ROC_AUC, display_denoising_stats_plot
+from utils.NNetwork import NNetwork, NNetwork
 import networkx as nx
 import csv
 import tracemalloc
 import itertools
 from multiprocessing import Pool
 import copy
+from pathlib import Path
+import matplotlib.pyplot as plt
+
 
 def read_BIOGRID_network(path, save_file_name):
     with open(path) as f:
@@ -18,7 +21,7 @@ def read_BIOGRID_network(path, save_file_name):
             edgelist.append([data[i][3], data[i][4]])
             print([data[i][3], data[i][4]])
 
-    G = Wtd_NNetwork()
+    G = NNetwork()
     G.add_wtd_edges(edges=edgelist, increment_weights=False)
     print('test edge', edgelist[0])
 
@@ -33,7 +36,7 @@ def read_BIOGRID_network(path, save_file_name):
 def load_reconstructed_ntwk(path):
     full_results = np.load(path, allow_pickle=True).item()
     edges = full_results.get('Edges reconstructed')
-    G = Wtd_NNetwork()
+    G = NNetwork()
     G.add_edges(edges=edges, edge_weight=1, increment_weights=False)
     return G
 
@@ -58,8 +61,9 @@ def run_NDL_NDR(  # ========================== Master parameters
         use_dict_from_corrupted_ntwk=False,
         use_dict_from_ER=False,
         # -------------------------- Global parameters
-        is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
-        is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
+        sampling_alg = 'pivot', # 'pivot' or 'glabuer' or 'idla' or 'pivot_inj'
+        #is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
+        #is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
         Pivot_exact_MH_rule = False, # If true, use exact Metropolis-Hastings rejection rule for Pivot chain
         omit_folded_edges=False,
         omit_chain_edges_denoising=True,
@@ -73,6 +77,7 @@ def run_NDL_NDR(  # ========================== Master parameters
         NDL_onmf_sub_iterations=100,
         NDL_alpha=1,  # L1 sparsity regularizer for sparse coding
         NDL_onmf_subsample=True,  # subsample from minibatches
+        NDL_skip_folded_hom = True, # if true, only use injective homomorphisms during dictionary learning (denoising not affected)
         NDL_jump_every=10,
         # ========================= Parameters for Network Reconstruction (NR)
         NR_recons_iter=50000,
@@ -83,7 +88,7 @@ def run_NDL_NDR(  # ========================== Master parameters
         # ========================= Parameters for Network Reconstruction (ND)
         ND_recons_iter=50000,
         ND_dictionary_for_denoising = None,
-        ND_original_network = None, # in Wtd_NNetwork class
+        ND_original_network = None, # in NNetwork class
         ND_original_network_path = None, # If no original network is given, assign a path to read it
         ND_noise_sign = "negative", # could also be "positive"
         ND_if_save_history=True,
@@ -91,10 +96,12 @@ def run_NDL_NDR(  # ========================== Master parameters
         ND_edge_threshold=0.5,
         ND_if_compute_ROC_AUC = True,
         ND_flip_TP = False,
+        ND_use_refreshing_random_dict = False, # If true, resample randomly the dictionary every iteration (for sanity check)
         # ========================= Parameters for Corruption-Denoising experiments
         # ------------------------- ND-NDL from corrupted Network
         CD_NDL_MCMC_iterations=50,
         # ------------------------- ND denoising paramters
+        CD_patch_masking_ratio=0,
         CD_recons_iter=50000,
         CD_custom_dict_path = None,
         CD_recons_jump_every=1000,
@@ -102,7 +109,7 @@ def run_NDL_NDR(  # ========================== Master parameters
         CD_ckpt_epoch=10000, # not used if None
         CD_if_save_wtd_reconstruction=True,
         CD_if_keep_visit_statistics=False,
-        CD_edge_threshold=0.3,
+        CD_edge_threshold=None,
         #---------------------------
         CD_if_compute_ROC_AUC=True
 ):
@@ -111,11 +118,11 @@ def run_NDL_NDR(  # ========================== Master parameters
         path = directory_network_files + ntwk
         network_name = ntwk.replace('.txt', '')
         network_name = network_name.replace('.', '')
-        mcmc = "Glauber"
-        if not is_glauber_dict:
-            mcmc = "Pivot"
+        #mcmc = "Glauber"
+        #if not is_glauber_dict:
+        #     mcmc = "Pivot"
 
-        G = Wtd_NNetwork()
+        G = NNetwork()
         G.load_add_wtd_edges(path, increment_weights=False, use_genfromtxt=True)
         print('!!!', G.get_edges()[0])
         print('num edges in G', len(G.edges))
@@ -137,9 +144,7 @@ def run_NDL_NDR(  # ========================== Master parameters
                                               # parameter for sparse coding, higher for stronger smoothing
                                               if_wtd_network=if_wtd_network,
                                               if_tensor_ntwk=if_tensor_ntwk,
-                                              is_glauber_dict=is_glauber_dict,
-                                              # keep true to use Glauber chain for dict. learning
-                                              is_glauber_recons=is_glauber_recons,
+                                              sampling_alg = sampling_alg,
                                               # keep false to use Pivot chain for recons.
                                               ONMF_subsample=NDL_onmf_subsample,
                                               # whether use i.i.d. subsampling for each batch
@@ -150,7 +155,8 @@ def run_NDL_NDR(  # ========================== Master parameters
         reconstructor.result_dict.update({'# of nodes': len(G.vertices)})
 
         if if_learn_fresh:
-            reconstructor.train_dict(jump_every=NDL_jump_every)
+            reconstructor.train_dict(jump_every=NDL_jump_every,
+                                     skip_folded_hom=NDL_skip_folded_hom)
         elif if_save_fig:
             # network_name = 'UCLA26'
             reconstructor.result_dict = np.load('Network_dictionary/full_result_' + str(network_name) + '.npy',
@@ -159,15 +165,14 @@ def run_NDL_NDR(  # ========================== Master parameters
             reconstructor.code = reconstructor.result_dict.get('Code COV learned')
 
         np.save(
-            save_folder + "/full_result_" + str(network_name) + "_k_" + str(k) + "_r_" + str(n_components) + "_" + mcmc,
+            save_folder + "/full_result_" + str(network_name) + "_k_" + str(k) + "_r_" + str(n_components) + "_" + sampling_alg,
             reconstructor.result_dict)
 
         if if_save_fig:
             ### save dictionaytrain_dict figures
 
             reconstructor.display_dict(title='Latent motifs learned from ' + str(network_name),
-                                       save_folder=save_folder,
-                                       save_filename='Network_dict' + '_' + str(network_name) + '_' + str(
+                                       save_path = save_folder + '/Network_dict' + '_' + str(network_name) + '_' + str(
                                            k) + '_' + str(n_components) + "_" + mcmc + "_omit_folded_edges_" + str(
                                            omit_folded_edges),
                                        make_first_atom_2by2=False,
@@ -191,7 +196,8 @@ def run_NDL_NDR(  # ========================== Master parameters
             if ND_dictionary_for_denoising is not None:
                 reconstructor.W = ND_dictionary_for_denoising
             else:
-                reconstructor.train_dict(jump_every=NDL_jump_every)
+                reconstructor.train_dict(jump_every=NDL_jump_every,
+                                         skip_folded_hom=NDL_skip_folded_hom)
 
             G_recons = reconstructor.reconstruct_network(recons_iter=ND_recons_iter,
                                                          if_save_history=ND_if_save_history,
@@ -274,21 +280,18 @@ def run_NDL_NDR(  # ========================== Master parameters
                                                   # parameter for sparse coding, higher for stronger smoothing
                                                   if_wtd_network=if_wtd_network,
                                                   if_tensor_ntwk=if_tensor_ntwk,
-                                                  is_glauber_dict=is_glauber_dict,
-                                                  # keep true to use Glauber chain for dict. learning
-                                                  is_glauber_recons=is_glauber_recons,
+                                                  sampling_alg = sampling_alg,
                                                   # keep false to use Pivot chain for recons.
                                                   ONMF_subsample=NDL_onmf_subsample,
                                                   # whether use i.i.d. subsampling for each batch
                                                   omit_folded_edges=omit_folded_edges,
                                                   Pivot_exact_MH_rule=Pivot_exact_MH_rule)
 
-            reconstructor.train_dict()
+            reconstructor.train_dict(skip_folded_hom=NDL_skip_folded_hom)
             ### save dictionaytrain_dict figures
             # reconstructor.display_dict(title, save_filename)
             reconstructor.display_dict(title='Dictionary learned from Recons. Network ' + str(network_name),
-                                       save_folder=save_folder,
-                                       save_filename='Network_dict_recons_Caltech_from_UCLA_chain_included' + '_' + str(
+                                       save_path = save_folder + '/Network_dict_recons_Caltech_from_UCLA_chain_included' + '_' + str(
                                            network_name) + str(k),
                                        show_importance=show_importance)
             np.save(save_folder + "/full_result_" + str(network_name) + "_k_" + str(k) + "_r_" + str(n_components),
@@ -296,10 +299,12 @@ def run_NDL_NDR(  # ========================== Master parameters
 
         if if_corrupt_and_denoise:
             print('!!!! corrupt and denoise')
+            # print('!!! sampling alg', sampling_alg)
             for (noise_type, rate) in itertools.product(ND_list_noise_type, ND_list_noise_density):
 
                 n_edges = len(nx.Graph(G.edges).edges)
                 print('!!! n_edges', n_edges)
+                print('!!! noise rate:', rate)
 
                 path_original = path
                 p = np.floor(n_edges * rate)
@@ -356,12 +361,11 @@ def run_NDL_NDR(  # ========================== Master parameters
                                                               # regularizer for sparse coding, higher for stronger smoothing
                                                               if_wtd_network=if_wtd_network,
                                                               if_tensor_ntwk=if_tensor_ntwk,
-                                                              is_glauber_dict=is_glauber_dict,
-                                                              # keep true to use Glauber chain for dict. learning
-                                                              is_glauber_recons=is_glauber_recons,
+                                                              sampling_alg = sampling_alg,
                                                               omit_folded_edges=omit_folded_edges,
                                                               # keep false to use Pivot chain for recons.
                                                               ONMF_subsample=NDL_onmf_subsample,
+                                                              #save_path = save_folder + "/" + save_filename,
                                                               # whether use i.i.d. subsampling for each batch
                                                               Pivot_exact_MH_rule=Pivot_exact_MH_rule)
                 ### Set up network dictionary
@@ -374,7 +378,8 @@ def run_NDL_NDR(  # ========================== Master parameters
 
 
                 elif use_dict_from_corrupted_ntwk:
-                    reconstructor_corrupt.W = reconstructor_corrupt.train_dict(update_dict_save=True)
+                    reconstructor_corrupt.W = reconstructor_corrupt.train_dict(update_dict_save=True,
+                                                                               skip_folded_hom=NDL_skip_folded_hom)
                     # print('corrupted dictionary', reconstructor.W)
                     print('Dictionary learned from the corrupted network')
 
@@ -382,30 +387,9 @@ def run_NDL_NDR(  # ========================== Master parameters
                     ### Use below for self-denoising from corrupt dictionary
                     reconstructor_corrupt.W = reconstructor.W
 
-                reconstructor_corrupt.display_dict(title='Dictionary used for denoising ' + str(network_name),
-                                                   save_folder=save_folder,
-                                                   save_filename='Dict_used_for_denoising' + '_' + str(
-                                                       network_name) + '_' + str(
-                                                       k) + '_' + str(n_components),
-                                                   make_first_atom_2by2=False,
-                                                   show_importance=show_importance)
-
-                np.save(save_folder + "/full_result_" + str(network_name) + "_" + "Use_corrupt_dict_" + str(
-                    use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
-                    len(edges_changed)) + "_noisetype_" + noise_type,
-                        reconstructor_corrupt.result_dict)
-
-                title = 'Dictionary learned:' + str(network_name) + "_n_corrupt_edges_" + str(
-                    len(edges_changed)) + "_noisetype_" + noise_type
                 save_filename = 'Network_dict' + '_' + str(network_name) + '_' + str(
                     k) + "_n_corrupt_edges_" + str(
                     len(edges_changed)) + '_' + str(n_components) + "_noisetype_" + noise_type
-
-                reconstructor_corrupt.display_dict(title=title,
-                                                   save_folder=save_folder,
-                                                   save_filename=save_filename,
-                                                   make_first_atom_2by2=False,
-                                                   show_importance=show_importance)
 
                 ### Denoising
                 # iter = np.floor(len(G.vertices) * np.log(len(G.vertices)) *4 )
@@ -419,26 +403,46 @@ def run_NDL_NDR(  # ========================== Master parameters
                                                                             ### Keep true for denoising
                                                                             omit_chain_edges=omit_chain_edges_denoising,
                                                                             omit_folded_edges=omit_folded_edges,
+                                                                            patch_masking_ratio=CD_patch_masking_ratio,
                                                                             ### Keep true for denoising
                                                                             edge_threshold=CD_edge_threshold,
                                                                             edges_added=edges_changed,
-                                                                            if_keep_visit_statistics=CD_if_keep_visit_statistics,
-                                                                            save_folder=save_folder,
-                                                                            save_filename=save_filename)
+                                                                            save_path = save_folder + "/" + save_filename,
+                                                                            use_refreshing_random_dict = ND_use_refreshing_random_dict,
+                                                                            if_keep_visit_statistics=CD_if_keep_visit_statistics)
+
 
                 print('parameter', parameter)
 
+                ### plot dictionary used for denoising
+                title = 'Dictionary learned:' + str(network_name) + "_n_corrupt_edges_" + str(
+                    len(edges_changed)) + "_noisetype_" + noise_type
+
+                reconstructor_corrupt.display_dict(title='Dictionary used for denoising ' + str(network_name),
+                                                   save_path = save_folder + '/Dict_used_for_denoising' + '_' + str(
+                                                       network_name) + '_' + str(
+                                                       k) + '_' + str(n_components),
+                                                   make_first_atom_2by2=False,
+                                                   show_importance=show_importance)
+
+                np.save(save_folder + "/full_result_" + str(network_name) + "_" + "Use_corrupt_dict_" + str(
+                    use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                    len(edges_changed)) + "_noisetype_" + noise_type,
+                        reconstructor_corrupt.result_dict)
+
+
+                ### Start computing denoising accuracies
                 if not use_dict_from_ER:
                     save_file_name = save_folder + "/full_result_" + str(
                         network_name) + "_" + "Use_corrupt_dict_" + str(
                         use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
                         len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
-                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                        iter) + "sampling_alg_" + str(sampling_alg)
                 else:
                     save_file_name = save_folder + "/full_result_" + str(network_name) + "_" + "Use_ER_dict_" + str(
                         use_dict_from_ER) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
                         len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
-                        iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                        iter) + "sampling_alg_" + str(sampling_alg)
 
                 # np.save(save_file_name, reconstructor_corrupt.result_dict)
 
@@ -455,13 +459,15 @@ def run_NDL_NDR(  # ========================== Master parameters
                     ROC_dict = compute_ROC_AUC(G_original=G,
                                                path_corrupt=path_corrupt,
                                                recons_wtd_edgelist=recons_wtd_edgelist,
-                                               is_dict_edges=True,
+                                               #is_dict_edges=True,
                                                delimiter_original=',',
                                                delimiter_corrupt=',',
                                                save_file_name=ROC_file_name,
                                                save_folder=save_folder,
-                                               flip_TF=not omit_chain_edges_denoising,
+                                               # flip_TF=not omit_chain_edges_denoising, (10/12/2021 for direct comparison of various methods)
+                                               flip_TF=False,
                                                subtractive_noise=(noise_type == '-ER_edges'))
+
 
                     reconstructor_corrupt.result_dict.update(
                         {'False positive rate': ROC_dict.get('False positive rate')})
@@ -483,21 +489,43 @@ def run_NDL_NDR(  # ========================== Master parameters
 
 
                     save_folder_sub = save_folder + "/" + str(network_name) + "/" + str(noise_type) + "/" + str(rate).replace('.', '')
+                    Path(save_folder_sub).mkdir(parents=True, exist_ok=True)
+
 
                     if not use_dict_from_ER:
                         save_file_name = save_folder_sub + "/ROC_dict_" + str(
                             network_name) + "_" + "Use_corrupt_dict_" + str(
                             use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
                             len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
-                            iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                            iter) + "sampling_alg_" + str(sampling_alg)
                     else:
                         save_file_name = save_folder_sub + "/ROC_dict_" + str(
                             network_name) + "_" + "Use_ER_dict_" + str(
                             use_dict_from_ER) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
                             len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
-                            iter) + "_Glauber_recons_" + str(is_glauber_recons)
+                            iter) + "sampling_alg_" + str(sampling_alg)
 
                     np.save(save_file_name, ROC_dict)
+
+                    if CD_if_keep_visit_statistics:
+                        denoising_dict = reconstructor_corrupt.result_dict.get("denoising_dict")
+                        W = reconstructor_corrupt.W
+                        save_path = save_folder + "/denoising_plot_" + str(
+                            network_name) + "_" + "Use_corrupt_dict_" + str(
+                            use_dict_from_corrupted_ntwk) + "_" + str(noise_nodes) + "_n_corrupt_edges_" + str(
+                            len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                            iter) + "sampling_alg_" + str(sampling_alg) + "mcmc_iter_" + str(CD_NDL_MCMC_iterations)
+
+                        title = str(network_name) +  "_n_corrupt_edges_" + str(
+                                        len(edges_changed)) + "_noisetype_" + noise_type + "_iter_" + str(
+                                        iter)
+
+                        display_denoising_stats_plot(denoising_dict = denoising_dict,
+                                                     W = W,
+                                                     ROC_dict = ROC_dict,
+                                                     save_path = save_path,
+                                                     title = title,
+                                                     fig_size = [15,8])
 
 
 def Generate_all_dictionary():
@@ -540,8 +568,8 @@ def Generate_all_dictionary():
         generate_corrupted_ntwk=False,
         use_dict_from_corrupted_ntwk=False,
         # --------------------------- Global parameters
-        is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
-        is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
+        #is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
+        #is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
         omit_folded_edges=True,
         omit_chain_edges_denoising=True,
         show_importance=True,
@@ -559,13 +587,15 @@ def Generate_corrupt_and_denoising_results():
     print('!! Generate & denoise experiment started..')
     ### Generating all dictionaries
     directory_network_files = "Data/Networks_all_NDL/"
-    save_folder = "Network_dictionary/test"
+    save_folder = "Network_dictionary/denoising_3"
 
     list_network_files = ['COVID_PPI.txt',
                           'Caltech36.txt',
                           'facebook_combined.txt',
                           'arxiv.txt',
                           'node2vec_homosapiens_PPI.txt']
+
+    list_network_files = ['Caltech36.txt']
 
     list_k = [21]  # list of number of nodes in the chain motif -- scale parameter
     list_n_components = [25]  # number of latent motifs to be learned)
@@ -584,6 +614,7 @@ def Generate_corrupt_and_denoising_results():
         ND_list_noise_type=ND_list_noise_type,
         ND_list_noise_density=ND_list_noise_density,
         # -------------------------- chose functions
+        sampling_alg = 'pivot', # 'pivot' or 'glabuer' or 'idla' or 'pivot_inj'
         if_learn_fresh=False,
         if_save_fig=False,
         if_recons=False,
@@ -592,16 +623,17 @@ def Generate_corrupt_and_denoising_results():
         generate_corrupted_ntwk=True,
         use_dict_from_corrupted_ntwk=True,
         # --------------------------- Global parameters
-        is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
-        is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
+        #is_glauber_dict=False,  # Use Glauber chain MCMC sampling for dictionary learning (Use Pivot chain if False)
+        #is_glauber_recons=False,  # Use Glauber chain MCMC sampling for reconstruction
         omit_folded_edges=False,
         omit_chain_edges_denoising=True,
         show_importance=True,
         # --------------------------- Iteration parameters
+        NDL_skip_folded_hom = True, # if true, only use injective homomorphisms during dictionary learning (denoising not affected)
         CD_NDL_MCMC_iterations=100,
         # CD_custom_dict_path = CD_custom_dict_path, # comment out if custom dictionary is not used
-        CD_ckpt_epoch=20000,
-        CD_recons_iter=200000,
+        CD_ckpt_epoch=5000,
+        CD_recons_iter=50000,
         CD_if_compute_ROC_AUC=True,
         CD_if_keep_visit_statistics=False
     )
@@ -764,7 +796,7 @@ def compute_all_recons_scores():
     G_original.add_edges(edges=edgelist)
     recons_directory = save_folder
     network_file = f"{network}_recons_for_nc_25_from_{network}.txt.txt"
-    G_recons = Wtd_NNetwork()
+    G_recons = NNetwork()
     G_recons.load_add_wtd_edges(recons_directory+network_file)
     accuracyScoreByTheta(G_original,G_recons,network)
   network_names_recons = ["arxiv","COVID_PPI", "facebook_combined","node2vec_homosapiens_PPI"]
@@ -775,7 +807,7 @@ def compute_all_recons_scores():
     G_original.add_edges(edges=edgelist)
     recons_directory = save_folder
     network_file = f"{network}_recons_for_nc_25_from_{network}.txt.txt"
-    G_recons = Wtd_NNetwork()
+    G_recons = NNetwork()
     G_recons.load_add_wtd_edges(recons_directory+network_file)
     accuracyScoreByTheta(G_original,G_recons,network)
 
