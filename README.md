@@ -11,6 +11,8 @@
 Hanbaek Lyu, Yacoub Kureh, Joshua Vendrow, and Mason A. Porter,\
 [*"Learning low-rank latent mesoscale structures in networks*"](https://arxiv.org/abs/2102.06984) (arXiv 2021)
 
+Note: There has been a major revision to the paper as well as to the algorithms. This change has not been reflected to the pypi version. 
+
 &nbsp;
 
 For a more user-friendly repository, please see [NDL package repository](https://github.com/jvendrow/Network-Dictionary-Learning).\
@@ -50,18 +52,15 @@ Ref: Amanda L. Traud, Eric D. Kelsic, Peter J. Mucha, and Mason A. Porter,\
 *Comparing community structure tocharacteristics in online collegiate social networks.* SIAM Review, 53:526–543, 2011.
 &nbsp;
 
-Then run generate_figures.py:
-```python
->>> generate_figures.py
-```
+Then copy & paste the ipynb notebook files into the main folder. Run each Jupyter notebook and see the instructions therein. 
+
 ## File description 
 
   1. **utils.ndl.py** : main Network Dictionary Learning (NDL) and Network Reconstruction and Denoising (NDR) functions. 
-  2. **utils.NNetwork.py** : Weighted network class (see https://github.com/HanbaekLyu/NNetwork). 
-  3. **onmf.py**: Online Nonnegative Matrix Factorization algorithms (see https://github.com/HanbaekLyu/ONMF_ONTF_NDL)
-  4. **helper_functions.final_plots_display.py**: helper functions for making plots 
-  5. **helper_functions.main_script_NDL.py**: Main script for NDL experiments (hyper parameters can be tuned here)
-  6. **generate_figures.py**: Run to generate figures (see description in the file) 
+  2. **onmf.py**: Online Nonnegative Matrix Factorization algorithms (see https://github.com/HanbaekLyu/ONMF_ONTF_NDL)
+  3. **helper_functions.final_plots_display.py**: helper functions for making plots 
+  4. **helper_functions.helper_functions.py**: helper functions for plotting and auxiliary computation 
+  5. **helper_functions.link_prediction.py: Script for network denoising benchmark experiment 
   
 ## Authors
 
