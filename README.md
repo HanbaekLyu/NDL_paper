@@ -57,10 +57,14 @@ Then copy & paste the ipynb notebook files into the main folder. Run each Jupyte
 ## File description 
 
   1. **utils.ndl.py** : main Network Dictionary Learning (NDL) and Network Reconstruction and Denoising (NDR) functions. 
-  2. **onmf.py**: Online Nonnegative Matrix Factorization algorithms (see https://github.com/HanbaekLyu/ONMF_ONTF_NDL)
+  2. **utils.onmf.py**: Online Nonnegative Matrix Factorization algorithms (see https://github.com/HanbaekLyu/ONMF_ONTF_NDL)
   3. **helper_functions.final_plots_display.py**: helper functions for making plots 
   4. **helper_functions.helper_functions.py**: helper functions for plotting and auxiliary computation 
-  5. **helper_functions.link_prediction.py: Script for network denoising benchmark experiment 
+  5. **helper_functions.link_prediction.py: Script for network denoising benchmark experiments 
+  6. **helper_functions.NDL_generate_dictionary.py: Script for generating all network dictionaries for all networks used in the paper
+  7. **helper_functions.link_prediction.py: Script for network denoising benchmark experiments 
+  8. **helper_functions.node2vec_helper.py: Script for using node2vec for network denoising experiments
+  9. **helper_functions.node2vec.py: original node2vec wrapper reformatted 
   
 ## Authors
 
