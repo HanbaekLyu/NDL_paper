@@ -1,5 +1,5 @@
 <p align="center">
-<img width="600" src="https://github.com/HanbaekLyu/NDL_paper/blob/main/Figures/NDL_logo.png?raw=true" alt="logo">
+<img width="600" src="https://github.com/HanbaekLyu/NDL_paper/blob/main/Figures/NDL_logo2.png?raw=true" alt="logo">
 </p>
 
 
@@ -27,7 +27,20 @@ Our code is also available as the python package [**ndlearn**](https://pypi.org/
 &nbsp;
 ![](Figures/Figure4.png)
 &nbsp;
-
+![](Figures/Figure5.png)
+&nbsp;
+![](Figures/Figure6.png)
+&nbsp;
+![](Figures/Figure7.png)
+&nbsp;
+![](Figures/Figure8.png)
+&nbsp;
+![](Figures/Figure9.png)
+&nbsp;
+![](Figures/Figure10.png)
+&nbsp;
+![](Figures/Figure11.png)
+&nbsp;
 
 
 ## Usage
