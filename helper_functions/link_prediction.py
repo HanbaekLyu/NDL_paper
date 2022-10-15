@@ -72,7 +72,7 @@ def generate_corrupt_networks(
 
 
         G = NNetwork()
-        G.load_add_wtd_edges(path, increment_weights=False, use_genfromtxt=True)
+        G.load_add_edges(path, increment_weights=False, use_genfromtxt=True)
 
         # take the largest component
         G_nx = nx.Graph(G.get_edges())
@@ -84,9 +84,9 @@ def generate_corrupt_networks(
             path_save = save_folder + "/" + network_name + "_noisetype_" + noise_type + ".txt"
             n_edges = len(nx.Graph(G.get_edges()).edges)
             path_original = path
-            rate = 0.5
+            rate = 0.1
             if noise_type in ['ER', '-ER']:
-                parameter = 0.5
+                parameter = 0.2
                 if (ntwk == 'COVID_PPI.txt' or ntwk == 'COVID_PPI_new.txt') and (noise_type in ["-ER_edges", "-ER"]):
                     parameter = 0.2
 
@@ -113,6 +113,14 @@ def generate_corrupt_networks(
                 noise_nodes=len(G.vertices)
                 parameter = rate
 
+            elif noise_type == '-ER_walk':
+                noise_nodes=len(G.vertices)
+                parameter = 0.99
+
+            elif noise_type == '-deg':
+                noise_nodes=len(G.vertices)
+                parameter = 0.5
+
             G_corrupt, edges_changed = Generate_corrupt_graph(path_load=path_original,
                                                               delimiter=' ',
                                                               G_original=G,
@@ -122,7 +130,7 @@ def generate_corrupt_networks(
                                                               noise_type=noise_type)
 
             print(path_save)
-
+    return G_corrupt, edges_changed
 
 
 def get_roc_score(edges_pos, edges_neg, score_matrix, adj_sparse):
@@ -149,9 +157,9 @@ def get_roc_score(edges_pos, edges_neg, score_matrix, adj_sparse):
     ap_score = average_precision_score(labels_all, preds_all)
     return roc_score, ap_score
 
-def edge_splits(G, G_corrupt, noise_sign = "deleted"):
+def edge_splits(G, G_corrupt, noise_sign = "deleted", k_mean=10):
 
-    nodes = list(nx.Graph(G.get_edges()).nodes)
+    #nodes = list(nx.Graph(G.get_edges()).nodes)
 
     nodes = list(nx.Graph(G_corrupt.get_edges()).nodes)
     nodes_set = set(nodes)
@@ -159,17 +167,42 @@ def edge_splits(G, G_corrupt, noise_sign = "deleted"):
     original_edges = set([(e[0],e[1]) for e in G.get_edges() if e[0] in nodes_set and e[1] in nodes_set])
     corrupt_edges = set([(e[0],e[1]) for e in G_corrupt.get_edges() if e[0] in nodes_set and e[1] in nodes_set])
 
-    if noise_sign == "deleted": #(following node2vec paper setting)
+    if noise_sign == "deleted": #(following node2vec paper setting) # but the resulting link prediction is too easy for sparse graphs
         deleted_edges = list(original_edges.difference(corrupt_edges))
         nonedges_false = []
+        G_nx = nx.Graph(G_corrupt.get_edges())
+        G_true_nx = nx.Graph(G.get_edges())
 
         # positive examples = deleted edges
         # netative exampels = non-edges in G_corrupt (observed graph)
         print('creating set of nonedges for negative examples...')
+        #deg_seq = [d for n, d in G_nx.degree()]
+        #dist = deg_seq/np.sum(deg_seq)
+
+        V = G.nodes()
+
+
+        """
+        deleted_edges = []
+        for i in np.arange(len(V)):
+            for j in np.arange(i, len(V)):
+                if not G_corrupt.has_edge(V[i], V[j]) and np.random.rand() < 0.1:
+
+                    if G.has_edge(V[i], V[j]):
+                        deleted_edges.append([V[i], V[j]])
+                    else:
+                        nonedges_false.append([V[i], V[j]])
+
+
+        """
         with tqdm.tqdm(total=len(deleted_edges)) as pbar:
             while(len(nonedges_false) < len(deleted_edges)):
+                #u = np.random.choice(nodes, 1, p = dist, replace=False)
+                #v = np.random.choice(nodes, 1, p = dist, replace=False)
+                #e = np.random.choice(nodes, 2, p = dist, replace=False)
                 e = np.random.choice(nodes, 2, replace=False)
                 e = (str(e[0]), str(e[1]))
+                #e = (str(u), str(v))
                 if e[0] >= e[1]:
                     continue
                 if e in nonedges_false:
@@ -179,6 +212,41 @@ def edge_splits(G, G_corrupt, noise_sign = "deleted"):
                 nonedges_false.append(e)
                 pbar.update(1)
 
+
+
+            """
+            while (len(nonedges_false) < len(deleted_edges)):
+                #k = np.random.randint(false_edge_range[0], false_edge_range[1])
+                k = np.maximum(np.random.geometric(p=1/k_mean), 5)
+                X, embs = G.get_patches(k=k, emb=None, sample_size=10, skip_folded_hom=False)
+                s = 0
+                #while (s < X.shape[1]) and (len(nonedges_false) < len(deleted_edges)):
+                for s in np.arange(X.shape[1]):
+                    emb = embs[s]
+                    H = G.subgraph(nodelist=emb)
+                    for u in H.nodes():
+                        for v in H.nodes():
+                            if not H.has_edge(u,v):
+                                e = (str(u), str(v))
+                                #e = (str(u), str(v))
+                                if e[0] >= e[1]:
+                                    continue
+                                if e in nonedges_false:
+                                    continue
+                                if e in original_edges or (e[1],e[0]) in original_edges:
+                                    continue
+                                nonedges_false.append(e)
+                                s += 1
+                                pbar.update(1)
+                                #print('!! s', s)
+                                if len(nonedges_false) < len(deleted_edges):
+                                    break
+
+                """
+
+
+
+
         # nonedges_false is a list of nonedges in G_corrupt that are also nonedges in G
         # and has the same size as deleted_edges
         X = deleted_edges + nonedges_false
@@ -186,23 +254,6 @@ def edge_splits(G, G_corrupt, noise_sign = "deleted"):
         print('splitting the examples into train/test sets...')
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=37)
-
-        """
-        train_edges_false = []
-        test_edges_false = []
-        train_edges_true = []
-        test_edges_true = []
-
-        for i in trange(len(nonedges_false)):
-            if np.random.rand() < 0.8:
-                train_edges_false.append(nonedges_false[i])
-                train_edges_true.append(deleted_edges[i])
-            else:
-                test_edges_false.append(nonedges_false[i])
-                test_edges_true.append(deleted_edges[i])
-        """
-
-
 
     else: # additive noise
 
@@ -233,13 +284,15 @@ def edge_splits(G, G_corrupt, noise_sign = "deleted"):
 
 def run_link_prediction_all(  # ========================== Master parameters
     directory_network_files="",
-    save_folder="Network_dictionary/test1",
+    save_folder="Network_dictionary/barplot1",
     # -------------------------- loop parameters
     list_network_files=[],
     ND_list_noise_type=[],
+    k_mean = 10,
     method_names = ['jaccard', 'adamic_adar_index', 'preferential_attachment', 'DeepWalk', 'node2vec', 'NDL+NDR'],
 ):
 
+    print("list_network_files", list_network_files)
     for ntwk in list_network_files:
         print("!!! network={}".format(ntwk))
 
@@ -249,7 +302,7 @@ def run_link_prediction_all(  # ========================== Master parameters
 
 
         G = NNetwork()
-        G.load_add_wtd_edges(path, increment_weights=False, use_genfromtxt=True)
+        G.load_add_edges(path, increment_weights=False, use_genfromtxt=True)
 
         # take the largest connected component
         G_nx = nx.Graph(G.get_edges())
@@ -269,6 +322,7 @@ def run_link_prediction_all(  # ========================== Master parameters
         for noise_type in ND_list_noise_type:
             output_dict = {}
             path_save = save_folder + "/" + network_name + "_noisetype_" + noise_type
+            print("!!! path_save", path_save)
             if os.path.isfile(path_save + "_output_dict.npy"):
                 output_dict = np.load(path_save + "_output_dict.npy", allow_pickle=True).item()
 
@@ -279,24 +333,41 @@ def run_link_prediction_all(  # ========================== Master parameters
             #    p = np.floor(n_edges * 0.2)
 
             noise_sign = "added"
-            if noise_type in ['-ER_edges','-ER','-BA']:
+            if noise_type in ['-ER_edges','-ER','-BA', '-ER_walk']:
                 noise_sign = "deleted"
 
             path_corrupt = path_save + ".txt"
 
 
             G_corrupt = NNetwork()
-            G_corrupt.load_add_wtd_edges(path_corrupt, increment_weights=False, delimiter=',',
+            G_corrupt.load_add_edges(path_corrupt, increment_weights=False, delimiter=',',
                                              use_genfromtxt=True)
 
 
             # get training and testing edges
-            train_edges_false, train_edges_true, test_edges_false, test_edges_true =  edge_splits(G, G_corrupt, noise_sign = noise_sign)
+            train_edges_false, train_edges_true, test_edges_false, test_edges_true =  edge_splits(G, G_corrupt,
+                                                                                                  noise_sign = noise_sign,
+                                                                                                  k_mean=k_mean)
             test_edges = test_edges_false + test_edges_true
 
             print('!!! num test edges: {}'.format(len(test_edges)))
 
+            """
+            recons_wtd_edgelist, denoising_dict = run_NDR_denoising_CV(G_corrupt, train_edges_false, train_edges_true, test_edges_false, test_edges_true, G, path_corrupt, noise_type)
 
+            ROC_dict = compute_ROC_AUC(G_original=G,
+                                       path_corrupt=path_corrupt,
+                                       recons_wtd_edgelist=recons_wtd_edgelist,
+                                       #is_dict_edges=True,
+                                       delimiter_original=',',
+                                       delimiter_corrupt=',',
+                                       test_edges = test_edges,
+                                       save_file_name="Network_dictionary/ROC_file_test",
+                                       save_folder=save_folder,
+                                       flip_TF=False,
+                                       subtractive_noise=(noise_sign == 'deleted'))
+
+            """
 
             for a in np.arange(1):
 
@@ -305,7 +376,6 @@ def run_link_prediction_all(  # ========================== Master parameters
 
                     name = method_names[i]
 
-                    print("")
                     print("Running link prediction with...", name)
 
                     if name == 'node2vec':
@@ -358,29 +428,36 @@ def run_link_prediction_all(  # ========================== Master parameters
             ROC_dict = ROC_dicts[i]
             print("method={}, ACC={}, AUC={}".format(name, np.mean(ROC_dict['Accuracy']), np.mean(ROC_dict['AUC'])))
 
-        return ROC_dicts
+
+    return ROC_dicts
 
 
 def Generate_corrupt_and_denoising_results(
     #method_names = ['jaccard', 'adamic_adar_index', 'preferential_attachment', 'spectral', 'DeepWalk', 'node2vec', 'NDL+NDR'],
-    method_names = ['jaccard', 'preferential_attachment', 'spectral', 'DeepWalk', 'node2vec', 'NDL+NDR'],
-    #method_names = ['jaccard', 'preferential_attachment', 'spectral', 'NDL+NDR'],
+    #method_names = ['jaccard', 'preferential_attachment', 'spectral', 'DeepWalk', 'node2vec', 'NDL+NDR'],
+    method_names = ['jaccard', 'preferential_attachment', 'spectral', 'DeepWalk', 'NDL+NDR'],
+    #method_names = ['jaccard', 'preferential_attachment'],
     #method_names = ['NDL+NDR'],
     save_folder = "",
     ):
     print('!! Generate & denoise experiment started..')
     ### Generating all dictionaries
     directory_network_files = "Data/Networks_all_NDL/"
-    save_folder = "Network_dictionary/test1"
+    save_folder = "Network_dictionary/barplot1"
 
     list_network_files = ['COVID_PPI.txt',
                           'Caltech36.txt',
-                          'facebook_combined.txt',
                           'arxiv.txt',
-                          'node2vec_homosapiens_PPI.txt']
+                          'node2vec_homosapiens_PPI.txt',
+                          'facebook_combined.txt']
+
+
+    list_network_files = ['Caltech36.txt']
 
     #ND_list_noise_type = ["-ER", "ER", "BA", "-BA"]
-    ND_list_noise_type = ["WS"]
+    #ND_list_noise_type = ["-ER_walk"]
+    ND_list_noise_type = ["-ER"]
+    #ND_list_noise_type = ["-ER"]
 
     #list_network_files = ['COVID_PPI.txt']
     #list_network_files = ['facebook_combined.txt']
@@ -406,7 +483,8 @@ def Generate_corrupt_and_denoising_results(
         save_folder=save_folder,
         list_network_files=list_network_files,
         ND_list_noise_type=ND_list_noise_type,
-        method_names = method_names)
+        method_names = method_names,
+        k_mean=10)
 
 #method_names=['jaccard', 'preferential_attachment', 'spectral', 'DeepWalk', 'node2vec', 'NDL+NDR']
 

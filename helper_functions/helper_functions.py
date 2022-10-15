@@ -91,7 +91,7 @@ def display_graphs(title,
                     if H.has_edge(u,v):
                         if np.abs(a-b) == 1:
                             G1.add_edge(u,v, color='r', weight=2)
-                        else:
+                        elif not G1.has_edge(u,v):
                             G1.add_edge(u,v, color='b', weight=0.5)
 
 
@@ -100,7 +100,7 @@ def display_graphs(title,
             edges = G1.edges()
             colors = [G1[u][v]['color'] for u,v in edges]
 
-            weights = [1*G1[u][v]['weight'] for u,v in edges]
+            weights = [10*G1[u][v]['weight'] for u,v in edges]
             nx.draw(G1, with_labels=False, node_size=20, ax=ax,
                     width=weights, edge_color=colors, label='Graph')
 
@@ -181,7 +181,8 @@ def display_dict_and_graph(title=None,
                              W = None,
                              At = None,
                              plot_graph_only=False,
-                             show_importance=False):
+                             show_importance=False,
+                             edge_thickness=10):
 
         n_components = W.shape[1]
         k = int(np.sqrt(W.shape[0]))
@@ -252,13 +253,13 @@ def display_dict_and_graph(title=None,
                             if H.has_edge(u,v):
                                 if np.abs(a-b) == 1:
                                     G1.add_edge(u,v, color='r', weight=A_sub[a,b])
-                                else:
+                                elif not G1.has_edge(u,v):
                                     G1.add_edge(u,v, color='b', weight=A_sub[a,b])
 
                     pos = nx.spring_layout(G1)
                     edges = G1.edges()
                     colors = [G1[u][v]['color'] for u,v in edges]
-                    weights = [10*G1[u][v]['weight'] for u,v in edges]
+                    weights = [edge_thickness*G1[u][v]['weight'] for u,v in edges]
 
                     nx.draw(G1, with_labels=False, node_size=20, ax=ax, width=weights, edge_color=colors, label='Graph')
 
@@ -675,8 +676,9 @@ def Generate_corrupt_graph(path_load, path_save,
                            delimiter=',',
                            noise_nodes=200,
                            parameter=0.1,
-                           noise_type='ER'):
+                           noise_type='-ER_walk'):
     ### noise_type = 'ER' (Erdos-Renyi), 'WS' (Watts-Strongatz), 'BA' (Barabasi-Albert), '-ER_edges' (Delete ER edges)
+    ### '-ER_walk' (Delete ER edges along k-walk MCMC sampler (not globally))
 
     if G_original is not None:
         G = nx.Graph()
@@ -804,21 +806,21 @@ def Generate_corrupt_graph(path_load, path_save,
     elif noise_type in ['-ER_edges', '-ER']:
         ### take a minimum spanning tree and add back edges except ones to be deleted
         noise_sign = "deleted"
-        full_edge_list = G_original.edges
+        full_edge_list = G_original.get_edges()
         G_diminished = nx.Graph(full_edge_list)
         Gc = max(nx.connected_components(G_diminished), key=len)
         G_diminished = G_diminished.subgraph(Gc).copy()
         full_edge_list = [e for e in G_diminished.edges]
 
-        print('!!! G_diminished.nodes', len(G_diminished.nodes()))
-        print('!!! G_diminished.edges', len(G_diminished.edges()))
+        #print('!!! G_diminished.nodes', len(G_diminished.nodes()))
+        #print('!!! G_diminished.edges', len(G_diminished.edges()))
 
         G_new = nx.Graph()
-        G_new.add_nodes_from(G_diminished.nodes())
         mst = nx.minimum_spanning_edges(G_diminished, data=False)
         mst_edgelist = list(mst)  # MST edges
         print('!!! len(mst_edgelist)', len(mst_edgelist))
         G_new = nx.Graph(mst_edgelist)
+        G_new.add_nodes_from(G_diminished.nodes())
 
         edges_non_mst = []
         for edge in full_edge_list:
@@ -827,7 +829,8 @@ def Generate_corrupt_graph(path_load, path_save,
         print('!!! len(edges_non_mst)', len(edges_non_mst))
 
         idx_array = np.random.choice(range(len(edges_non_mst)), int(len(edges_non_mst)*parameter), replace=False)
-        edges_deleted = [full_edge_list[i] for i in idx_array]
+        #edges_deleted = [full_edge_list[i] for i in idx_array]
+        edges_deleted = [edges_non_mst[i] for i in idx_array]
         print('!!! len(edges_deleted)', len(edges_deleted))
         for i in range(len(edges_non_mst)):
             if i not in idx_array:
@@ -835,6 +838,50 @@ def Generate_corrupt_graph(path_load, path_save,
                 G_new.add_edge(edge[0], edge[1])
 
         print('!! edges deleted = {} / target={}'.format(len(edges_deleted), int(len(edges_non_mst)*parameter)))
+        edges_changed = edges_deleted
+
+    elif noise_type in ['-ER_walk']:
+        ### take a minimum spanning tree and add back edges except ones to be deleted
+        full_edge_list = G_original.get_edges()
+        G_nn = nn.NNetwork()
+        G_nn.add_edges(full_edge_list)
+
+        noise_sign = "deleted"
+
+        G_new = nx.Graph(full_edge_list)
+        Gc = max(nx.connected_components(G_new), key=len)
+        G_new = G_new.subgraph(Gc).copy()
+        full_edge_list = [e for e in G_new.edges]
+
+        edges_deleted = []
+
+        k=100
+        #target_n_delete = int(len(full_edge_list)*parameter)
+        target_n_delete = 100
+        while len(edges_deleted) < target_n_delete:
+
+            X, embs = G_nn.get_patches(k=k, emb=None, sample_size=1, skip_folded_hom=False)
+            s = 0
+            while (s < X.shape[1]) and (len(edges_deleted) < target_n_delete):
+                emb = embs[s]
+                H = G_nn.subgraph(nodelist=emb)
+                H_edges = H.get_edges()
+                H_chain_edges = [[emb[i],emb[i+1]] for i in np.arange(k-1)]
+                H_offchain_edges = [edge for edge in H_edges if edge not in H_chain_edges]
+
+                #print('!!! len(H_offchain_edges)', len(H_offchain_edges))
+
+                idx_array = np.random.choice(range(len(H_offchain_edges)), int(len(H_offchain_edges)*parameter), replace=False)
+
+                for j in list(idx_array):
+                    edge = H_offchain_edges[j]
+                    if G_new.has_edge(edge[0], edge[1]):
+                        G_new.remove_edge(edge[0], edge[1])
+                        edges_deleted.append(edge)
+
+                s += 1
+        print('!! edges deleted = {} / target={}'.format(len(edges_deleted), int(len(full_edge_list)*parameter)))
+
         edges_changed = edges_deleted
 
     nx.write_edgelist(G_new, path_save, data=False, delimiter=',')
@@ -919,6 +966,7 @@ def compute_ROC_AUC(G_original=None,
                     delimiter_original=',',
                     delimiter_corrupt=',',
                     save_file_name=None,
+                    test_edges=None,
                     save_folder=None,
                     flip_TF=False,
                     subtractive_noise=False,
@@ -962,6 +1010,8 @@ def compute_ROC_AUC(G_original=None,
     y_true = []
     y_pred = []
 
+    print("~~~!!subtractive_noise", subtractive_noise)
+
     if not subtractive_noise:
         """
         # classify all observed edges
@@ -998,6 +1048,7 @@ def compute_ROC_AUC(G_original=None,
         # classify all observed non-edges O(n^2)
         # usually use subsample of true non-edges
         # G_recons contains only those subsampled edges
+
         edges = G_recons.get_edges()
         for e in tqdm.tqdm(edges):
             pred = G_recons.get_edge_weight(e[0], e[1])
@@ -1010,6 +1061,64 @@ def compute_ROC_AUC(G_original=None,
                 y_true.append(1)
             else:
                 y_true.append(0)
+
+
+
+        """
+        V = G_original.nodes()
+
+        for i in np.arange(len(V)):
+            for j in np.arange(i, len(V)):
+                if not G_corrupted.has_edge(V[i], V[j]) and np.random.rand(1) < 0.1:
+                    pred = G_recons.get_edge_weight(V[i], V[j])
+                    if pred == None:
+                        y_pred.append(0)
+                    else:
+                        if not flip_TF:
+                            y_pred.append(pred)
+                        else:
+                            y_pred.append(1 - pred)
+
+                    if G_original.has_edge(V[i], V[j]):
+                        y_true.append(1)
+                    else:
+                        y_true.append(0)
+
+
+        """
+        """
+                if test_edges is not None:
+                    V = G_original.nodes()
+
+                    for i in np.arange(len(V)):
+                        for j in np.arange(i, len(V)):
+                            if not G_corrupted.has_edge(V[i], V[j]) and np.random.rand(1) < 0.1:
+                                pred = G_recons.get_edge_weight(V[i], V[j])
+                                if pred == None:
+                                    y_pred.append(0)
+                                else:
+                                    if not flip_TF:
+                                        y_pred.append(pred)
+                                    else:
+                                        y_pred.append(1 - pred)
+
+                                if G_original.has_edge(V[i], V[j]):
+                                    y_true.append(1)
+                                else:
+                                    y_true.append(0)
+                else:
+                    print("~~~!!! test edges ROC")
+                    for e in tqdm.tqdm(test_edges):
+                        pred = G_recons.get_edge_weight(e[0], e[1])
+                        if pred is None:
+                            pred = 0
+                        y_pred.append(pred)
+
+                        if G_original.has_edge(e[0], e[1]):
+                            y_true.append(1)
+                        else:
+                            y_true.append(0)
+        """
 
     X_train, X_test, y_train, y_test = train_test_split(y_pred, y_true, test_size=test_size)
 

@@ -112,6 +112,24 @@ class Network_Reconstructor():
         # (!!! Also finds self-loop)
         return min(j)
 
+    def omit_chain_edges(self, X):
+        ### input is (k^2 x N) matrix X
+        ### make all entries corresponding to the edges of the conditioned chain motif zero
+        ### This may be applied to patches matrix and also to the dictionary matrix
+
+        k = self.k1 + self.k2 + 1  # size of the network patch
+        ### Reshape X into (k x k x N) tensor
+        X1 = X.copy()
+        X1 = X1.reshape(k, k, -1)
+
+        ### for each slice along mode 2, make the entries along |x-y|=1 be zero
+        for i in np.arange(X1.shape[-1]):
+            for x in itertools.product(np.arange(k), repeat=2):
+                if np.abs(x[0] - x[1]) == 1:
+                    X1[x[0], x[1], i] = 0
+
+        return X1.reshape(k ** 2, -1)
+
     def tree_sample(self, B, x=None):
         # A = N by N matrix giving edge weights on networks
         # B = adjacency matrix of the tree motif rooted at first node
@@ -927,8 +945,6 @@ class Network_Reconstructor():
         fig1.savefig(save_folder + '/' + save_filename)
         plt.show()
 
-
-
 # instantiating the decorator
     def reconstruct_network(self,
                             recons_iter=100,
@@ -1143,14 +1159,14 @@ class Network_Reconstructor():
                 ### Load and combine with the saved edges and reconstruction counts
                 if has_saved_checkpoint:
                     print('!!! merging with previous checkpoint...')
-                    self.G_recons_baseline.load_add_wtd_edges(path=path_recons_baseline, increment_weights=True,
+                    self.G_recons_baseline.load_add_edges(path=path_recons_baseline, increment_weights=True,
                                                               is_pickle=True)
 
                     G_overlap_count_new = NNetwork()
-                    G_overlap_count_new.add_wtd_edges(edges=self.G_overlap_count.wtd_edges)
+                    G_overlap_count_new.add_edges(edges=self.G_overlap_count.get_edges())
 
                     G_overlap_count_old = NNetwork()
-                    G_overlap_count_old.load_add_wtd_edges(path=path_overlap_count, increment_weights=False,
+                    G_overlap_count_old.load_add_edges(path=path_overlap_count, increment_weights=False,
                                                            is_pickle=True)
 
 
@@ -1158,20 +1174,20 @@ class Network_Reconstructor():
                         G_overlap_count_new.add_colored_edges(colored_edges=self.G_overlap_count.colored_edges)
                         G_overlap_count_old.load_add_colored_edges(path=path_overlap_colored_count)
 
-                        wtd_edges = G_overlap_count_old.wtd_edges
+                        wtd_edges = G_overlap_count_old.get_edges()
                         colored_edges = G_overlap_count_old.colored_edges
                         #print('!!! check if wtd and colored edges are the same:', wtd_edges.keys() == colored_edges.keys())
 
                     G_recons_new = NNetwork()
-                    G_recons_new.add_wtd_edges(edges=self.G_recons.wtd_edges)
+                    G_recons_new.add_edges(edges=self.G_recons.get_edges())
                     # G_recons_new.get_min_max_edge_weights()
 
                     self.G_recons = NNetwork()
-                    self.G_recons.load_add_wtd_edges(path=path_recons, increment_weights=False,
+                    self.G_recons.load_add_edges(path=path_recons, increment_weights=False,
                                                      is_pickle=True)
                     # self.G_recons.get_min_max_edge_weights()
-
-                    for edge in G_recons_new.wtd_edges.keys():
+                    G_recons_new_edges = G_recons_new.get_edges()
+                    for edge in G_recons_new_edges.keys():
                         edge = eval(edge)
                         count_old = G_overlap_count_old.get_edge_weight(edge[0], edge[1])
                         count_new = G_overlap_count_new.get_edge_weight(edge[0], edge[1])
@@ -1227,11 +1243,11 @@ class Network_Reconstructor():
                 # self.G_overlap_count.get_min_max_edge_weights()
 
                 ### Save current graphs
-                self.G_recons.save_wtd_edges(path_recons)
-                self.G_overlap_count.save_wtd_edges(path_overlap_count)
+                self.G_recons.save_edges(path_recons)
+                self.G_overlap_count.save_edges(path_overlap_count)
                 if if_keep_visit_statistics:
                     self.G_overlap_count.save_colored_edges(path_overlap_colored_count)
-                self.G_recons_baseline.save_wtd_edges(path_recons_baseline)
+                self.G_recons_baseline.save_edges(path_recons_baseline)
 
                 has_saved_checkpoint = True
 
@@ -1271,15 +1287,23 @@ class Network_Reconstructor():
         # Load up saved reconstruction files
         if (ckpt_epoch is not None) and (recons_iter>ckpt_epoch):
             self.G_recons = NNetwork()
-            self.G_recons.load_add_wtd_edges(path=path_recons, increment_weights=False, is_pickle=True)
+            self.G_recons.load_add_edges(path=path_recons, increment_weights=False, is_pickle=True)
             self.G_overlap_count = NNetwork()
-            self.G_overlap_count.load_add_wtd_edges(path=path_overlap_count, increment_weights=False, is_pickle=True)
+            self.G_overlap_count.load_add_edges(path=path_overlap_count, increment_weights=False, is_pickle=True)
             if if_keep_visit_statistics:
                 self.G_overlap_count.load_add_colored_edges(path=path_overlap_colored_count)
 
         ### Save weigthed reconstruction into full results dictionary
         if if_save_wtd_reconstruction:
-            self.result_dict.update({'Edges in weighted reconstruction': self.G_recons.wtd_edges})
+            self.result_dict.update({'Edges in weighted reconstruction': self.G_recons.get_wtd_edgelist()})
+
+        """
+        ### Save weigthed reconstruction into full results dictionary
+        if if_save_wtd_reconstruction:
+            self.result_dict.update({'Edges in weighted reconstruction': self.G_recons.get_edges()})
+            ####!!! 10/13/2022 using get_edges() degrades denoising performance
+        """
+
 
         if if_keep_visit_statistics:
             denoising_dict = compute_denoising_stats(G=self.G,
@@ -1392,7 +1416,7 @@ class Network_Reconstructor():
         has_saved_checkpoint = False
         for t in trange(recons_iter):
             meso_patch = self.get_patches(B, emb,
-                                          sampling_alg=self.sampling_alg,
+                                          sampling_alg='pivot',
                                           skip_folded_hom=skip_folded_hom)
 
             patch = meso_patch[0]
@@ -1521,14 +1545,14 @@ class Network_Reconstructor():
                 ### Load and combine with the saved edges and reconstruction counts
                 if has_saved_checkpoint:
                     print('!!! merging with previous checkpoint...')
-                    self.G_recons_baseline.load_add_wtd_edges(path=path_recons_baseline, increment_weights=True,
+                    self.G_recons_baseline.load_add_edges(path=path_recons_baseline, increment_weights=True,
                                                               is_pickle=True)
 
                     G_overlap_count_new = NNetwork()
-                    G_overlap_count_new.add_wtd_edges(edges=self.G_overlap_count.wtd_edges)
+                    G_overlap_count_new.add_edges(edges=self.G_overlap_count.get_edges())
 
                     G_overlap_count_old = NNetwork()
-                    G_overlap_count_old.load_add_wtd_edges(path=path_overlap_count, increment_weights=False,
+                    G_overlap_count_old.load_add_edges(path=path_overlap_count, increment_weights=False,
                                                            is_pickle=True)
 
 
@@ -1536,7 +1560,7 @@ class Network_Reconstructor():
                         G_overlap_count_new.add_colored_edges(colored_edges=self.G_overlap_count.colored_edges)
                         G_overlap_count_old.load_add_colored_edges(path=path_overlap_colored_count)
 
-                        wtd_edges = G_overlap_count_old.wtd_edges
+                        wtd_edges = G_overlap_count_old.get_edges()
                         colored_edges = G_overlap_count_old.colored_edges
                         #print('!!! check if wtd and colored edges are the same:', wtd_edges.keys() == colored_edges.keys())
 
@@ -1549,8 +1573,8 @@ class Network_Reconstructor():
                     self.G_recons = NNetwork()
                     self.G_recons.load_add_colored_edges(path=path_recons)
                     # self.G_recons.get_min_max_edge_weights()
-
-                    for edge in G_recons_new.wtd_edges.keys():
+                    G_recons_new_edges = G_recons_new.get_edges()
+                    for edge in G_recons_new_edges.keys():
                         edge = eval(edge)
                         count_old = G_overlap_count_old.get_edge_weight(edge[0], edge[1])
                         count_new = G_overlap_count_new.get_edge_weight(edge[0], edge[1])
@@ -1606,10 +1630,10 @@ class Network_Reconstructor():
 
                 ### Save current graphs
                 self.G_recons.save_colored_edges(path_recons)
-                self.G_overlap_count.save_wtd_edges(path_overlap_count)
+                self.G_overlap_count.save_edges(path_overlap_count)
                 if if_keep_visit_statistics:
                     self.G_overlap_count.save_colored_edges(path_overlap_colored_count)
-                self.G_recons_baseline.save_wtd_edges(path_recons_baseline)
+                self.G_recons_baseline.save_edges(path_recons_baseline)
 
                 has_saved_checkpoint = True
 
@@ -1628,7 +1652,7 @@ class Network_Reconstructor():
             self.G_recons = NNetwork()
             self.G_recons.load_add_colored_edges(path=path_recons)
             self.G_overlap_count = NNetwork()
-            self.G_overlap_count.load_add_wtd_edges(path=path_overlap_count, increment_weights=False, is_pickle=True)
+            self.G_overlap_count.load_add_edges(path=path_overlap_count, increment_weights=False, is_pickle=True)
             if if_keep_visit_statistics:
                 self.G_overlap_count.load_add_colored_edges(path=path_overlap_colored_count)
 
@@ -1656,6 +1680,156 @@ class Network_Reconstructor():
         # Return reconstruction
         return self.G_recons
 
+
+    def reconstruct_network_simple(self,
+                            recons_iter=100,
+                            if_save_history=False,
+                            jump_every=None,
+                            omit_chain_edges=False,  ### Turn this on for denoising
+                            W = None,
+                            save_path = None):
+        print('reconstructing given network...')
+        print('!!! sampling alg', self.sampling_alg)
+        '''
+        A streamlined version of network reconstruction algorithm
+        '''
+        if save_path is None:
+            save_path = "Network_dictionary/test"
+
+        if W is None:
+            W = self.W
+
+        G = self.G
+        self.G_recons = NNetwork()
+        self.G_recons_baseline = NNetwork()  ## reconstruct only the edges used by the Glauber chain
+        self.G_overlap_count = NNetwork()
+        self.G_recons_baseline.add_nodes(nodes=[v for v in G.vertices])
+        self.G_recons.add_nodes(nodes=[v for v in G.vertices])
+        self.G_overlap_count.add_nodes(nodes=[v for v in G.vertices])
+
+        G_recons_history = []
+        patch_history = []
+        patch_recons_history = []
+        emb_history = []
+        code_history = []
+
+        self.result_dict.update({'NDR iterations': recons_iter})
+        self.result_dict.update({'omit_chain_edges for NDR': omit_chain_edges})
+
+        B = self.path_adj(self.k1, self.k2)
+        k = self.k1 + self.k2 + 1  # size of the network patch
+        x0 = np.random.choice(np.asarray([i for i in G.vertices]))
+        emb = self.tree_sample(B, x0)
+        #emb_history = emb.copy()
+        #code_history = np.zeros(2 * self.n_components)
+
+        omit_folded_edges = False
+        ### Set up paths and folders
+        path_recons = save_path + "_wtd_edgelist_recons" + '.pickle'
+        path_recons_baseline = save_path + "_baseline_recons" + '.pickle'
+        path_overlap_count = save_path + "_overlap_count" + '.pickle'
+        path_overlap_colored_count = save_path + "_overlap_colored_count" + '.pickle'
+
+        t0 = time()
+
+        ### omit all chain edges from the extended dictionary
+        W_ext_reduced = patch_masking(W,
+                                      k = self.k1 + self.k2 + 1,  # size of the network patch
+                                      chain_edge_masking=1-int(omit_chain_edges))
+
+        has_saved_checkpoint = False
+        for t in trange(recons_iter):
+            meso_patch = self.get_patches(B, emb,
+                                          omit_folded_edges=omit_folded_edges,
+                                          sampling_alg=self.sampling_alg)
+            patch = meso_patch[0]
+            emb = meso_patch[1]
+            if (jump_every is not None) and (t % jump_every == 0):
+                x0 = np.random.choice(np.asarray([i for i in G.vertices]))
+                emb = self.tree_sample(B, x0)
+                # print('homomorphism resampled')
+
+            ### omit all chain edges from the patches matrix
+            patch_reduced = patch_masking(patch,
+                                          k = self.k1 + self.k2 + 1,  # size of the network patch
+                                          chain_edge_masking=1-int(omit_chain_edges))
+
+            coder = SparseCoder(dictionary=W_ext_reduced.T,  ### Use extended dictioanry
+                                transform_n_nonzero_coefs=None,
+                                transform_alpha=self.alpha,
+                                transform_algorithm='lasso_lars',
+                                positive_code=True)
+
+            code = coder.transform(patch_reduced.T)
+
+            patch_recons = np.dot(W_ext_reduced, code.T).T
+            patch_recons = patch_recons.reshape(k, k)
+
+            for x in itertools.product(np.arange(k), repeat=2):
+                a = emb[x[0]]
+                b = emb[x[1]]
+                # edge = [str(a), str(b)] ### Use this when nodes are saved as strings, e.g., '154' as in DNA networks
+                edge = [a, b]  ### Use this when nodes are saved as integers, e.g., 154 as in FB networks
+
+                # print('!!!! meso_patch[2]', meso_patch[2])
+
+                if not (omit_folded_edges and meso_patch[2][x[0], x[1]] == 0):
+                    #    print('!!!!!!!!! reconstruction masked')
+                    #    print('!!!!! meso_patch[2]', meso_patch[2])
+                    if self.G_overlap_count.has_edge(a, b) == True:
+                        # print(G_recons.edges)
+                        # print('ind', ind)
+                        j = self.G_overlap_count.get_edge_weight(a, b)
+                    else:
+                        j = 0
+
+
+                    if self.G_recons.has_edge(a, b) == True:
+                        new_edge_weight = (j * self.G_recons.get_edge_weight(a, b) + patch_recons[x[0], x[1]]) / (j + 1)
+                    else:
+                        new_edge_weight = patch_recons[x[0], x[1]]
+
+
+                    if np.abs(x[0] - x[1]) == 1:
+                        # print('baseline edge added!!')
+                        self.G_recons_baseline.add_edge(edge, weight=1, increment_weights=False)
+
+                    if not (omit_chain_edges and np.abs(x[0] - x[1]) == 1):
+
+                        self.G_overlap_count.add_edge(edge, weight=j + 1, increment_weights=False)
+
+                        if new_edge_weight > 0:
+                            self.G_recons.add_edge(edge, weight=new_edge_weight, increment_weights=False)
+
+
+
+            if if_save_history:
+                emb_history.append(emb)
+                code_history.append(code)
+                patch_history.append(patch)
+                patch_recons_history.append(patch_recons)
+                G0 = NNetwork()
+                G0.add_nodes(nodes=[v for v in G.vertices])
+                G0.add_edges(self.G_recons.get_wtd_edgelist().copy())
+                G_recons_history.append(G0)
+
+        ### Save weigthed reconstruction into full results dictionary
+        #if if_save_wtd_reconstruction:
+        #    self.result_dict.update({'Edges in weighted reconstruction': self.G_recons.wtd_edges})
+
+
+        print('Number of edges in the baseline recons. : ', len(self.G_recons_baseline.get_edges()))
+        #print('result_dict', self.result_dict)
+        if if_save_history:
+            self.result_dict.update({'emb_history': emb_history})
+            self.result_dict.update({'code_history': code_history})
+            self.result_dict.update({'patch_history': patch_history})
+            self.result_dict.update({'patch_recons_history': patch_recons_history})
+            self.result_dict.update({'G_recons_history': G_recons_history})
+
+
+        # Return reconstruction
+        return self.G_recons
 
 
     def compute_recons_accuracy(self, G_recons, if_baseline=False, edges_added=None, output_full_metrics=False):
