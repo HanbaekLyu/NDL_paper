@@ -740,6 +740,62 @@ def recons_display_simple():
   plt.clf()
 
 
+def community_box_plot(path_subgraphs="Network_dictionary/NDL_rev1/community_data_subgraphs.npy",
+                       path_latent_motifs="Network_dictionary/NDL_rev1/community_data_motifs.npy"):
+
+    #data_a = [[1,2,5], [5,7,2,2,5], [7,2,5]]
+    #data_b = [[6,4,2], [1,2,5,3,2], [2,3,5,1]]
+
+    subgraphs_community_list = np.load(path_subgraphs, allow_pickle=True)
+    latentmotifs_community_list = np.load(path_latent_motifs, allow_pickle=True)
+
+    data_a = subgraphs_community_list
+    data_b = latentmotifs_community_list
+
+
+    ticks = ['$\\textsc{\\texttt{SNAP FB}}$',
+                    '$\\textsc{\\texttt{arXiv}}$',
+                    '$\\textsc{\\texttt{H. Sapiens}}$',
+                    '$\\textsc{\\texttt{Caltech}}$',
+                    '$\\textsc{\\texttt{MIT}}$',
+                    '$\\textsc{\\texttt{UCLA}}$',
+                    '$\\textsc{\\texttt{Harvard}}$',
+                    '$\\textsc{\\texttt{ER}}_{1}$',
+                    '$\\textsc{\\texttt{ER}}_{2}$',
+                    '$\\textsc{\\texttt{WS}}_{1}$',
+                    '$\\textsc{\\texttt{WS}}_{2}$',
+                    '$\\textsc{\\texttt{BA}}_{1}$',
+                    '$\\textsc{\\texttt{BA}}_{2}$',
+                    '$\\textsc{\\texttt{SBM}}_{1}$',
+                    '$\\textsc{\\texttt{SBM}}_{2}$']
+
+    def set_box_color(bp, color):
+        plt.setp(bp['boxes'], color=color)
+        plt.setp(bp['whiskers'], color=color)
+        plt.setp(bp['caps'], color=color)
+        plt.setp(bp['medians'], color=color)
+
+    plt.figure(figsize=[13,5])
+
+    bpl = plt.boxplot(data_a, positions=np.array(range(len(data_a)))*2.0-0.4, sym='r+', widths=0.6)
+    bpr = plt.boxplot(data_b, positions=np.array(range(len(data_b)))*2.0+0.4, sym='b+', widths=0.6)
+    set_box_color(bpl, 'r') # colors are from http://colorbrewer2.org/
+    set_box_color(bpr, 'b')
+
+
+
+    # draw temporary red and blue lines and use them to create a legend
+    plt.plot([], c='r', label='subgraphs')
+    plt.plot([], c='b', label='latent motifs')
+    plt.legend(fontsize=12)
+
+    plt.xticks(range(0, len(ticks) * 2, 2), ticks, fontsize=11.5)
+    plt.xlim(-2, len(ticks)*2)
+    plt.ylim(0, 22)
+    plt.ylabel('community size', fontsize=13)
+    plt.tight_layout()
+    plt.savefig('boxcompare.pdf')
+
 
 def recons_display():
     # Load Data
